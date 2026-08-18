@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 import signal
@@ -10,6 +11,26 @@ import signal_engine
 import trade_manager
 import telegram_notifier as tg
 import daily_report
+
+# ─── Pause Control ────────────────────────────────────────────────
+PAUSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PAUSED")
+
+def _is_paused():
+    """Check if bot is paused via PAUSED file."""
+    return os.path.exists(PAUSE_FILE)
+
+def _set_paused(paused=True):
+    """Create or remove PAUSED file."""
+    if paused:
+        with open(PAUSE_FILE, "w") as f:
+            f.write("paused")
+        logger.info("Bot PAUSED")
+        tg.send_message("⏸ <b>Bot PAUSED</b>")
+    else:
+        if os.path.exists(PAUSE_FILE):
+            os.remove(PAUSE_FILE)
+        logger.info("Bot RESUMED")
+        tg.send_message("▶️ <b>Bot RESUMED</b>")
 
 # ─── Logging Setup ────────────────────────────────────────────────
 logging.basicConfig(
@@ -120,6 +141,12 @@ def main():
 
         while _running:
             scan_count += 1
+
+            # Check pause state
+            if _is_paused():
+                time.sleep(5)
+                continue
+
             logger.debug(f"--- Scan #{scan_count} ---")
 
             # Get all available symbols
