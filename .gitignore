@@ -1,0 +1,21 @@
+# Logs
+*.log
+
+# Generated reports (keep code, not output)
+*.pdf
+*.pptx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Debug files
+debug*.py
+
+# Secrets - never commit
+config_local.py
+
+# OS
+Thumbs.db
+Desktop.ini
