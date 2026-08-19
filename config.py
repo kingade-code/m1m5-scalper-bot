@@ -19,7 +19,7 @@ FIB_ENTRY_LOW = 0.5
 FIB_ENTRY_HIGH = 0.786
 
 # ─── Risk Management ─────────────────────────────────────────────
-RISK_PERCENT = 8.0  # Aggressive for $1000/mo target on $1k
+RISK_PERCENT = 4.0  # Conservative — 50% less risk, same 77.3% WR
 MAX_POSITIONS = 10
 MAX_POSITIONS_PER_SYMBOL = 1
 MAGIC_NUMBER = 777777
