@@ -27,7 +27,7 @@ SLIPPAGE = 3
 
 # ─── Symbol Filter ────────────────────────────────────────────────
 AUTO_DISCOVER_SYMBOLS = False
-SYMBOL_LIST = ["XAUUSD", "EURUSD", "GBPUSD"]
+SYMBOL_LIST = ["XAUUSD", "GBPUSD", "AUDUSD"]
 
 # ─── Confirmation ─────────────────────────────────────────────────
 REQUIRE_CONFIRMATION = True
@@ -62,7 +62,7 @@ TRAILING_STEP_ATR = 0.3  # Trail by 0.3*ATR behind price
 MAX_BARS_IN_TRADE = 15  # Very fast exits for scalping
 
 # ─── Logging ──────────────────────────────────────────────────────
-LOG_LEVEL = "INFO"
+LOG_LEVEL = "DEBUG"
 LOG_FILE = "m1m5_scalper.log"
 
 # ─── Telegram ─────────────────────────────────────────────────────

@@ -121,8 +121,8 @@ def manage_open_positions():
         ticket = pos.ticket
         symbol = pos.symbol
 
-        # Get current ATR for trailing stop
-        atr = _get_current_atr(symbol, pos.timeframe)
+        # Get current ATR for trailing stop (use first configured timeframe)
+        atr = _get_current_atr(symbol, config.TIMEFRAMES[0])
         if atr is None:
             continue
 
@@ -208,7 +208,7 @@ def _manage_max_bars(pos):
     """Force close position if held for more than MAX_BARS_IN_TRADE bars."""
     ticket = pos.ticket
     symbol = pos.symbol
-    tf = pos.timeframe
+    tf = config.TIMEFRAMES[0]
 
     key = f"{ticket}"
     if key not in _bar_counts:

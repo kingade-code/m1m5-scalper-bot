@@ -23,6 +23,7 @@ def analyze_symbol(symbol, timeframe):
     # Detect the current move from swing points
     move = swing_detector.detect_current_move(df)
     if move is None:
+        logger.debug(f"{symbol} {_tf_name(timeframe)}: no swing move detected")
         return None
 
     direction = move["direction"]
@@ -32,10 +33,12 @@ def analyze_symbol(symbol, timeframe):
     # Calculate Fibonacci levels
     levels = fibonacci.calculate_retracement_levels(sh_price, sl_price, direction)
     if levels is None:
+        logger.debug(f"{symbol} {_tf_name(timeframe)}: fib levels None")
         return None
 
     entry_zone = fibonacci.get_entry_zone(levels, direction)
     if entry_zone is None:
+        logger.debug(f"{symbol} {_tf_name(timeframe)}: entry zone None")
         return None
 
     # Use second-to-last candle (last closed)
@@ -43,6 +46,7 @@ def analyze_symbol(symbol, timeframe):
     prev_close = prev_bar["close"]
 
     if not fibonacci.is_price_in_entry_zone(prev_close, entry_zone):
+        logger.debug(f"{symbol} {_tf_name(timeframe)}: price {prev_close:.5f} not in zone [{entry_zone['entry_zone_low']:.5f} - {entry_zone['entry_zone_high']:.5f}]")
         return None
 
     # Confirmation check
