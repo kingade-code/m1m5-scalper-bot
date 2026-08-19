@@ -133,7 +133,7 @@ def main():
         sys.exit(1)
 
     # Notify bot started
-    tg.notify_bot_started()
+    # tg.notify_bot_started()
 
     try:
         logger.info("Bot started. Scanning for Kingade setups...")
