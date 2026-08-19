@@ -53,7 +53,7 @@ def calculate_retracement_levels(swing_high_price, swing_low_price, direction):
 
 
 def get_entry_zone(levels, direction):
-    """Get the entry zone (0.618 to 0.786) and determine entry/SL/TP prices.
+    """Get the entry zone (0.5 to 0.786) and determine entry/SL/TP prices.
 
     Returns dict:
         entry_zone_high, entry_zone_low: the entry zone boundaries
@@ -67,8 +67,14 @@ def get_entry_zone(levels, direction):
         return None
 
     zone_high = levels["0.786"]
-    zone_low = levels["0.618"]
+    zone_low = levels["0.5"]
     entry_mid = (zone_high + zone_low) / 2.0
+
+    # Enforce minimum zone width (0.1% of mid price)
+    min_zone = entry_mid * 0.001
+    if abs(zone_high - zone_low) < min_zone:
+        zone_high = entry_mid + min_zone / 2
+        zone_low = entry_mid - min_zone / 2
 
     result = {
         "entry_zone_high": zone_high,
