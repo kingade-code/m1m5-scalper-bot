@@ -39,6 +39,31 @@ def send_message(text, parse_mode="HTML"):
     return success
 
 
+def send_signal_to_group(text, parse_mode="HTML"):
+    """Send trade signal to the FREE SIGNALS topic in KINGADE FOREX group."""
+    if not config.TELEGRAM_ENABLED:
+        return False
+
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        payload = {
+            "chat_id": config.TELEGRAM_GROUP_CHAT_ID,
+            "message_thread_id": config.TELEGRAM_GROUP_THREAD_ID,
+            "text": text,
+            "parse_mode": parse_mode,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        resp = urllib.request.urlopen(req, timeout=15)
+        result = json.loads(resp.read())
+        if result.get("ok"):
+            logger.info("Signal sent to FREE SIGNALS topic")
+            return True
+    except Exception as e:
+        logger.error(f"Telegram group error: {e}")
+    return False
+
+
 def send_document(file_path, caption=""):
     """Send a file (PDF/PPTX) to all configured Telegram chats."""
     if not config.TELEGRAM_ENABLED:
@@ -117,6 +142,7 @@ def notify_signal(signal):
         f"<b>ATR:</b> {signal.get('atr', 0):.2f}\n\n"
         f"<i>Auto-executing...</i>"
     )
+    send_signal_to_group(text)
     return send_message(text)
 
 
@@ -135,11 +161,12 @@ def notify_trade_opened(signal, result):
         f"<b>Take Profit:</b> {signal['tp1']:.2f}\n"
         f"<b>Ticket:</b> #{result.order if result else 'N/A'}"
     )
+    send_signal_to_group(text)
     return send_message(text)
 
 
 def notify_trade_closed(position, profit):
-    """Send a trade closed notification."""
+    """Send trade closed notification."""
     direction = "BUY" if position.type == 0 else "SELL"
     emoji = "\U0001F4B0" if profit >= 0 else "\U0001F4B9"
     result = "WIN" if profit >= 0 else "LOSS"
@@ -153,6 +180,7 @@ def notify_trade_closed(position, profit):
         f"<b>P/L:</b> ${profit:+.2f}\n"
         f"<b>Ticket:</b> #{position.ticket}"
     )
+    send_signal_to_group(text)
     return send_message(text)
 
 

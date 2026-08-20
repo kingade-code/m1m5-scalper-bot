@@ -68,7 +68,9 @@ LOG_FILE = "m1m5_scalper.log"
 # ─── Telegram ─────────────────────────────────────────────────────
 TELEGRAM_ENABLED = True
 TELEGRAM_BOT_TOKEN = "8803542513:AAF4TtMmcWIHAj88xNxsjHH8NYxqHMUfwag"
-TELEGRAM_CHAT_IDS = [6412335897, -1002127450559]  # Private chat + KINGADE FOREX group
+TELEGRAM_CHAT_IDS = [6412335897]  # Private chat
+TELEGRAM_GROUP_CHAT_ID = -1002127450559  # KINGADE FOREX group
+TELEGRAM_GROUP_THREAD_ID = 3  # FREE SIGNALS topic
 
 # ─── Scan Interval ────────────────────────────────────────────────
 SCAN_INTERVAL_SECONDS = 10
