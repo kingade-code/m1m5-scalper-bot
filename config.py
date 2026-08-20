@@ -35,7 +35,7 @@ CONFIRMATION_CANDLES = 1
 
 # ─── Trend Filter ─────────────────────────────────────────────────
 USE_TREND_FILTER = True
-TREND_EMA_PERIOD = 50
+TREND_EMA_PERIOD = 30
 
 # ─── Momentum Filter ──────────────────────────────────────────────
 USE_MOMENTUM_FILTER = True
@@ -56,7 +56,7 @@ ATR_TP_MULTIPLIER = 1.5  # TP = entry +/- ATR * multiplier (tighter than fib ext
 # ─── Trailing Stop ────────────────────────────────────────────────
 USE_TRAILING_STOP = True
 TRAILING_START_ATR = 0.75  # Start trailing after 0.75*ATR profit (+19% avg win, 71.9% WR)
-TRAILING_STEP_ATR = 0.3  # Trail by 0.3*ATR behind price
+TRAILING_STEP_ATR = 0.2  # Trail by 0.2*ATR behind price (+4% WR, +12% PF vs 0.3)
 
 # ─── Max Bars in Trade ────────────────────────────────────────────
 MAX_BARS_IN_TRADE = 15  # Very fast exits for scalping
