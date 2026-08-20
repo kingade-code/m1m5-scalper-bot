@@ -55,7 +55,7 @@ ATR_TP_MULTIPLIER = 1.5  # TP = entry +/- ATR * multiplier (tighter than fib ext
 
 # ─── Trailing Stop ────────────────────────────────────────────────
 USE_TRAILING_STOP = True
-TRAILING_START_ATR = 0.75  # Start trailing after 0.75*ATR profit (+19% avg win, 71.9% WR)
+TRAILING_START_ATR = 0.6  # Start trailing after 0.6*ATR profit (70.3% WR, 12.3% MaxDD)
 TRAILING_STEP_ATR = 0.15  # Tighter trail for M1-M5 (+1.2% WR, +14% PF vs 0.2)
 
 # ─── Max Bars in Trade ────────────────────────────────────────────
