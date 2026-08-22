@@ -208,11 +208,13 @@ def notify_error(error_msg):
 
 def notify_bot_started():
     """Send bot startup notification."""
+    tf_map = {1: "M1", 5: "M5", 15: "M15", 30: "M30"}
+    tf_names = ", ".join(tf_map.get(tf, str(tf)) for tf in config.TIMEFRAMES)
     text = (
         f"<b>\U0001F680 KINGADE SCALPER BOT STARTED</b>\n\n"
         f"<b>Account:</b> {config.MT5_LOGIN or 'Live'}\n"
         f"<b>Symbols:</b> {', '.join(config.SYMBOL_LIST)}\n"
-        f"<b>Timeframes:</b> M1, M5, M15, M30\n"
+        f"<b>Timeframes:</b> {tf_names}\n"
         f"<b>Risk:</b> {config.RISK_PERCENT}%\n"
         f"<b>Trailing Stop:</b> {'ON' if config.USE_TRAILING_STOP else 'OFF'}\n"
         f"<b>Auto-Trade:</b> ON"

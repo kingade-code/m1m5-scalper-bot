@@ -102,7 +102,7 @@ def get_entry_zone(levels, direction):
 
 
 def is_price_in_entry_zone(current_price, entry_zone):
-    """Check if current price is within the 0.618-0.786 entry zone."""
+    """Check if current price is within the 0.5-0.786 entry zone."""
     if entry_zone is None:
         return False
     zone_high = entry_zone["entry_zone_high"]

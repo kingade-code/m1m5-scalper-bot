@@ -32,6 +32,47 @@ def _set_paused(paused=True):
         logger.info("Bot RESUMED")
         tg.send_message("▶️ <b>Bot RESUMED</b>")
 
+# ─── Market Hours ─────────────────────────────────────────────────
+_market_paused = False
+
+def _is_market_open():
+    """Check if forex market is open.
+    Market opens Sunday 22:00 UTC, closes Friday 22:00 UTC."""
+    now = datetime.utcnow()
+    weekday = now.weekday()  # 0=Mon, 4=Fri, 5=Sat, 6=Sun
+    
+    # Saturday: always closed
+    if weekday == 5:
+        return False
+    # Sunday before 22:00 UTC: closed
+    if weekday == 6 and now.hour < 22:
+        return False
+    # Friday after 22:00 UTC: closed
+    if weekday == 4 and now.hour >= 22:
+        return False
+    return True
+
+def _check_market_hours():
+    """Auto-pause at market close, auto-resume at market open."""
+    global _market_paused
+    
+    if _is_market_open():
+        if _market_paused:
+            _market_paused = False
+            if _is_paused():
+                os.remove(PAUSE_FILE)
+            logger.info("Market OPENED - Bot RESUMED")
+            tg.send_message("🟢 <b>Market OPENED</b> - Bot resumed scanning")
+        return True
+    else:
+        if not _market_paused:
+            _market_paused = True
+            with open(PAUSE_FILE, "w") as f:
+                f.write("market_closed")
+            logger.info("Market CLOSED - Bot PAUSED")
+            tg.send_message("🔴 <b>Market CLOSED</b> - Bot paused until Sunday 22:00 UTC")
+        return False
+
 # ─── Logging Setup ────────────────────────────────────────────────
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -60,6 +101,7 @@ signal.signal(signal.SIGTERM, _shutdown_handler)
 # ─── Candle Close Tracking ────────────────────────────────────────
 _last_candle_time = {}
 _last_report_date = None
+_last_weekly_report = None
 
 
 def _is_new_candle(symbol, timeframe):
@@ -85,7 +127,7 @@ def _is_new_candle(symbol, timeframe):
 def _print_banner():
     print("=" * 60)
     print("  KINGADE SCALPER BOT")
-    print("  Entry Zone: 0.618 - 0.786 | ATR-based SL/TP")
+    print("  Entry Zone: 0.5 - 0.786 | ATR-based SL/TP")
     print(f"  Timeframes: {' | '.join(_tf_name(tf) for tf in config.TIMEFRAMES)}")
     print(f"  Risk Per Trade: {config.RISK_PERCENT}%")
     print(f"  Max Positions: {config.MAX_POSITIONS}")
@@ -123,6 +165,26 @@ def _check_daily_report():
             tg.notify_error(f"Daily report error: {e}")
 
 
+def _check_weekly_report():
+    """Send weekly report on Friday after market close (22:00 UTC)."""
+    global _last_weekly_report
+    now = datetime.now()
+    today = now.date()
+
+    if _last_weekly_report == today:
+        return
+
+    # Send on Friday at 22:00 UTC (market close)
+    if now.weekday() == 4 and now.hour == 22 and now.minute >= 0:
+        try:
+            daily_report.generate_and_send_weekly_report()
+            _last_weekly_report = today
+            logger.info("Weekly report sent successfully")
+        except Exception as e:
+            logger.error(f"Weekly report error: {e}")
+            tg.notify_error(f"Weekly report error: {e}")
+
+
 # ─── Main Loop ────────────────────────────────────────────────────
 def main():
     _print_banner()
@@ -141,6 +203,11 @@ def main():
 
         while _running:
             scan_count += 1
+
+            # Check market hours (auto-pause at close, auto-resume at open)
+            if not _check_market_hours():
+                time.sleep(60)
+                continue
 
             # Check pause state
             if _is_paused():
@@ -218,6 +285,9 @@ def main():
 
             # Check for daily report
             _check_daily_report()
+
+            # Check for weekly report
+            _check_weekly_report()
 
             # Wait before next scan
             time.sleep(config.SCAN_INTERVAL_SECONDS)
