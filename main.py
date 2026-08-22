@@ -11,6 +11,7 @@ import signal_engine
 import trade_manager
 import telegram_notifier as tg
 import daily_report
+import login_setup
 
 # ─── Pause Control ────────────────────────────────────────────────
 PAUSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PAUSED")
@@ -188,6 +189,9 @@ def _check_weekly_report():
 # ─── Main Loop ────────────────────────────────────────────────────
 def main():
     _print_banner()
+
+    # Prompt for login if not configured
+    login_setup.setup_login()
 
     # Initialize MT5
     if not mt5c.initialize():
