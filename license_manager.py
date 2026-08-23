@@ -1,23 +1,29 @@
 """Offline license key manager.
 
 Key format: KNG-XXXX-XXXX-XXXX (alphanumeric, 3 groups of 4)
-Validates: format + MT5 account number
+Validates: format + whitelist from valid_keys.json
 Saves to: license.json (local file)
 """
 import os
 import json
 import re
-import hashlib
 import time
 
 LICENSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "license.json")
+KEYS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "valid_keys.json")
 KEY_PATTERN = re.compile(r"^KNG-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
 
 
-def _hash_key(key, account):
-    """Generate validation hash from key + MT5 account."""
-    raw = f"{key}-{account}-kingade-2026"
-    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+def _load_valid_keys():
+    """Load valid keys from whitelist file."""
+    if os.path.exists(KEYS_FILE):
+        try:
+            with open(KEYS_FILE, "r") as f:
+                data = json.load(f)
+            return set(data.get("keys", []))
+        except (json.JSONDecodeError, IOError):
+            pass
+    return set()
 
 
 def load_license():
@@ -36,7 +42,6 @@ def save_license(key, mt5_account):
     data = {
         "license_key": key,
         "mt5_account": mt5_account,
-        "hash": _hash_key(key, mt5_account),
         "activated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     with open(LICENSE_FILE, "w") as f:
@@ -54,6 +59,16 @@ def validate_key_format(key):
     return True, key
 
 
+def validate_key_whitelist(key):
+    """Check if key exists in valid_keys.json whitelist."""
+    valid_keys = _load_valid_keys()
+    if not valid_keys:
+        return False, "No valid keys found. Contact support."
+    if key not in valid_keys:
+        return False, "Invalid license key. Contact support."
+    return True, "Key valid."
+
+
 def validate():
     """Main validation function. Returns True if license is valid."""
     print("\n  LICENSE VALIDATION")
@@ -64,13 +79,14 @@ def validate():
     account = lic_data.get("mt5_account")
 
     # Existing valid license
-    if key and lic_data.get("hash"):
-        expected_hash = _hash_key(key, account)
-        if lic_data["hash"] == expected_hash:
+    if key and account:
+        valid, msg = validate_key_whitelist(key)
+        if valid:
             print(f"  License valid for account {account}.")
             return True
         else:
-            print("  License file corrupted. Please re-enter your key.")
+            print(f"  {msg}")
+            print("  Please enter a valid license key.\n")
 
     # Prompt for new key
     print("  No valid license found.")
@@ -85,6 +101,12 @@ def validate():
         print(f"  ERROR: {result}")
         return False
     key = result
+
+    # Validate whitelist
+    valid, msg = validate_key_whitelist(key)
+    if not valid:
+        print(f"  ERROR: {msg}")
+        return False
 
     # Get MT5 account
     account = input("  MT5 Account Number: ").strip()
