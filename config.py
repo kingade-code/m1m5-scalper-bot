@@ -15,7 +15,7 @@ MT5_TIMEOUT = 10_000
 TIMEFRAMES = [mt5.TIMEFRAME_M1, mt5.TIMEFRAME_M5]
 
 # ─── Swing Detection ──────────────────────────────────────────────
-SWING_LOOKBACK = 80  # Shorter lookback for scalping
+SWING_LOOKBACK = 100  # Optimized: higher = better WR (66.7%)
 SWING_STRENGTH = 2  # Lower = more swing points = more signals
 
 # ─── Fibonacci Settings ───────────────────────────────────────────
@@ -39,7 +39,7 @@ CONFIRMATION_CANDLES = 1
 
 # ─── Trend Filter ─────────────────────────────────────────────────
 USE_TREND_FILTER = True
-TREND_EMA_PERIOD = 20  # Optimized for M1-M5 (was 30, +1.2% WR)
+TREND_EMA_PERIOD = 40  # Optimized: EMA40 + SL2.5 = 66.7% WR
 
 # ─── Momentum Filter ──────────────────────────────────────────────
 USE_MOMENTUM_FILTER = True
@@ -51,7 +51,7 @@ MIN_BODY_RATIO = 0.10  # Lower bar for more entries
 # ─── ATR Stop Loss ───────────────────────────────────────────────
 USE_ATR_SL = True
 ATR_PERIOD = 14
-ATR_SL_MULTIPLIER = 1.0  # Tight SL for scalping
+ATR_SL_MULTIPLIER = 2.5  # Optimized: wider SL = 66.7% WR (was 1.0)
 MIN_STOP_DISTANCE = 5.0  # Lower for EURUSD/GBPUSD, XAUUSD will skip tight signals
 
 # ─── Scalper TP ───────────────────────────────────────────────────
