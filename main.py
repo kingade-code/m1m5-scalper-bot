@@ -12,7 +12,6 @@ import trade_manager
 import telegram_notifier as tg
 import daily_report
 import login_setup
-import license_client
 
 # ─── Pause Control ────────────────────────────────────────────────
 PAUSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PAUSED")
@@ -197,11 +196,6 @@ def main():
     # Initialize MT5
     if not mt5c.initialize():
         logger.error("Failed to initialize MT5. Is MetaTrader 5 running?")
-        sys.exit(1)
-
-    # Validate license
-    if not license_client.validate():
-        logger.error("License validation failed. Bot will exit.")
         sys.exit(1)
 
     # Notify bot started
