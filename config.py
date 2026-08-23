@@ -1,5 +1,9 @@
 import MetaTrader5 as mt5
 
+# ─── License ──────────────────────────────────────────────────────
+LICENSE_SERVER = "https://kingade-license.onrender.com"
+LICENSE_KEY = None  # Set via license.json or prompt on first run
+
 # ─── MT5 Connection ───────────────────────────────────────────────
 MT5_PATH = None
 MT5_LOGIN = None
