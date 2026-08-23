@@ -33,7 +33,37 @@ SLIPPAGE = 3
 AUTO_DISCOVER_SYMBOLS = False
 SYMBOL_LIST = ["XAUUSD", "GBPUSD", "AUDUSD"]
 
-# ─── Confirmation ─────────────────────────────────────────────────
+# ─── Per-Symbol Overrides ────────────────────────────────────────
+# Gold needs different settings due to wider ATR
+SYMBOL_OVERRIDES = {
+    "XAUUSD": {
+        "TIMEFRAMES": [mt5.TIMEFRAME_M1],
+        "ATR_SL_MULTIPLIER": 2.0,
+        "ATR_TP_MULTIPLIER": 2.5,
+        "TRAILING_START_ATR": 1.0,
+        "TRAILING_STEP_ATR": 0.15,
+        "SWING_LOOKBACK": 40,
+        "TREND_EMA_PERIOD": 30,
+        "ENTRY_MODE": "pattern",
+    },
+}
+
+def get_symbol_param(symbol, param, default=None):
+    """Get config param, checking symbol overrides first."""
+    if symbol in SYMBOL_OVERRIDES and param in SYMBOL_OVERRIDES[symbol]:
+        return SYMBOL_OVERRIDES[symbol][param]
+    return getattr(__class__, param, default) if hasattr(__class__, param) else globals().get(param, default)
+
+def get_symbol_timeframes(symbol):
+    """Get timeframes for a symbol, checking overrides first."""
+    if symbol in SYMBOL_OVERRIDES and "TIMEFRAMES" in SYMBOL_OVERRIDES[symbol]:
+        return SYMBOL_OVERRIDES[symbol]["TIMEFRAMES"]
+    return TIMEFRAMES
+
+# ─── Entry Mode ───────────────────────────────────────────────────
+# "fibonacci" = Fibonacci retracement zone (default for forex)
+# "pattern" = Candlestick pattern detection (Hammer/Star for gold)
+ENTRY_MODE = "fibonacci"
 REQUIRE_CONFIRMATION = True
 CONFIRMATION_CANDLES = 1
 
@@ -51,16 +81,16 @@ MIN_BODY_RATIO = 0.10  # Lower bar for more entries
 # ─── ATR Stop Loss ───────────────────────────────────────────────
 USE_ATR_SL = True
 ATR_PERIOD = 14
-ATR_SL_MULTIPLIER = 2.5  # Optimized: wider SL = 66.7% WR (was 1.0)
+ATR_SL_MULTIPLIER = 4.0  # V2: SL4.0 = 62.4% WR, RR 1:1.48, PF 3.36
 MIN_STOP_DISTANCE = 5.0  # Lower for EURUSD/GBPUSD, XAUUSD will skip tight signals
 
 # ─── Scalper TP ───────────────────────────────────────────────────
-ATR_TP_MULTIPLIER = 1.5  # TP = entry +/- ATR * multiplier (tighter than fib ext)
+ATR_TP_MULTIPLIER = 5.0  # V2: TP5.0 = higher RR, PF 3.36
 
 # ─── Trailing Stop ────────────────────────────────────────────────
 USE_TRAILING_STOP = True
-TRAILING_START_ATR = 0.6  # Start trailing after 0.6*ATR profit (70.3% WR, 12.3% MaxDD)
-TRAILING_STEP_ATR = 0.15  # Tighter trail for M1-M5 (+1.2% WR, +14% PF vs 0.2)
+TRAILING_START_ATR = 1.0  # V2: wider trail start = higher RR
+TRAILING_STEP_ATR = 0.12  # V2: tighter step = better profit capture
 
 # ─── Max Bars in Trade ────────────────────────────────────────────
 MAX_BARS_IN_TRADE = 15  # Very fast exits for scalping

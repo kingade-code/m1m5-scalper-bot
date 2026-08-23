@@ -4,6 +4,7 @@ import mt5_connector as mt5c
 import swing_detector
 import fibonacci
 import filters
+import pattern_detector
 import config
 
 logger = logging.getLogger(__name__)
@@ -12,16 +13,113 @@ logger = logging.getLogger(__name__)
 def analyze_symbol(symbol, timeframe):
     """Analyze a single symbol on a given timeframe for a Kingade setup.
 
-    Uses ATR-based SL/TP (matching backtest) instead of fibonacci extension.
+    Supports two entry modes:
+    - "fibonacci": Fibonacci retracement zone (default for forex pairs)
+    - "pattern": Candlestick pattern detection (Hammer/Star for gold)
+    
+    Uses ATR-based SL/TP.
     Returns a signal dict if a valid entry is found, otherwise None.
     """
-    bars_needed = max(config.SWING_LOOKBACK + 20, 200)
+    entry_mode = config.get_symbol_param(symbol, "ENTRY_MODE", config.ENTRY_MODE)
+    
+    if entry_mode == "pattern":
+        return _analyze_pattern(symbol, timeframe)
+    else:
+        return _analyze_fibonacci(symbol, timeframe)
+
+
+def _analyze_pattern(symbol, timeframe):
+    """Analyze using candlestick pattern detection (Hammer/Star)."""
+    bars_needed = 200
     df = mt5c.get_ohlc(symbol, timeframe, bars_needed)
-    if df is None or len(df) < config.SWING_LOOKBACK:
+    if df is None or len(df) < 30:
+        return None
+
+    # Detect pattern
+    direction = pattern_detector.detect_pattern(df)
+    if direction is None:
+        return None
+
+    # Use second-to-last candle (last closed)
+    prev_bar = df.iloc[-2]
+    prev_close = prev_bar["close"]
+
+    # Trend filter: only trade in direction of H1 trend
+    if not filters.check_trend_filter(df, direction, symbol):
+        logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by trend filter")
+        return None
+
+    # Momentum filter: RSI + candle body ratio
+    if not filters.check_momentum_filter(df, direction):
+        logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by momentum filter")
+        return None
+
+    # ATR for SL/TP calculation
+    atr_series = filters.calc_atr(df["high"], df["low"], df["close"], config.ATR_PERIOD)
+    current_atr = atr_series.iloc[-2]
+
+    # ATR-based SL
+    atr_sl_mult = config.get_symbol_param(symbol, "ATR_SL_MULTIPLIER", config.ATR_SL_MULTIPLIER)
+    atr_sl_dist = current_atr * atr_sl_mult
+    if direction == "bullish":
+        atr_sl = prev_close - atr_sl_dist
+    else:
+        atr_sl = prev_close + atr_sl_dist
+
+    # ATR-based TP
+    atr_tp_mult = config.get_symbol_param(symbol, "ATR_TP_MULTIPLIER", config.ATR_TP_MULTIPLIER)
+    atr_tp_dist = current_atr * atr_tp_mult
+    if direction == "bullish":
+        atr_tp = prev_close + atr_tp_dist
+    else:
+        atr_tp = prev_close - atr_tp_dist
+
+    # Skip if SL distance too small
+    sl_dist = abs(prev_close - atr_sl)
+    if sl_dist < config.MIN_STOP_DISTANCE:
+        return None
+
+    timeframe_name = _tf_name(timeframe)
+    signal = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "timeframe_name": timeframe_name,
+        "direction": direction,
+        "entry_price": prev_close,
+        "entry_zone_high": prev_close,
+        "entry_zone_low": prev_close,
+        "sl": atr_sl,
+        "tp1": atr_tp,
+        "tp2": atr_tp,
+        "swing_high": 0,
+        "swing_low": 0,
+        "current_price": prev_close,
+        "move_direction": direction,
+        "atr": current_atr,
+        "entry_mode": "pattern",
+    }
+
+    logger.info(
+        f"SIGNAL | {symbol} {timeframe_name} | "
+        f"{signal['direction'].upper()} | "
+        f"Entry: {prev_close:.5f} | "
+        f"SL: {signal['sl']:.5f} | TP: {signal['tp1']:.5f} | "
+        f"ATR: {current_atr:.5f} | Pattern: Hammer/Star"
+    )
+
+    return signal
+
+
+def _analyze_fibonacci(symbol, timeframe):
+    """Analyze using Fibonacci retracement (original method)."""
+    swing_lb = config.get_symbol_param(symbol, "SWING_LOOKBACK", config.SWING_LOOKBACK)
+    bars_needed = max(swing_lb + 20, 200)
+    df = mt5c.get_ohlc(symbol, timeframe, bars_needed)
+    if df is None or len(df) < swing_lb:
         return None
 
     # Detect the current move from swing points
-    move = swing_detector.detect_current_move(df)
+    move = swing_detector.detect_current_move(df, lookback=swing_lb)
     if move is None:
         logger.debug(f"{symbol} {_tf_name(timeframe)}: no swing move detected")
         return None
@@ -71,8 +169,9 @@ def analyze_symbol(symbol, timeframe):
     current_atr = atr_series.iloc[-2]
 
     # ATR-based SL (matching backtest exactly)
+    atr_sl_mult = config.get_symbol_param(symbol, "ATR_SL_MULTIPLIER", config.ATR_SL_MULTIPLIER)
     if config.USE_ATR_SL:
-        atr_sl_dist = current_atr * config.ATR_SL_MULTIPLIER
+        atr_sl_dist = current_atr * atr_sl_mult
         if direction == "bullish":
             atr_sl = prev_close - atr_sl_dist
         else:
@@ -81,7 +180,8 @@ def analyze_symbol(symbol, timeframe):
         atr_sl = entry_zone["sl"]
 
     # ATR-based TP (tight scalper target)
-    atr_tp_dist = current_atr * config.ATR_TP_MULTIPLIER
+    atr_tp_mult = config.get_symbol_param(symbol, "ATR_TP_MULTIPLIER", config.ATR_TP_MULTIPLIER)
+    atr_tp_dist = current_atr * atr_tp_mult
     if direction == "bullish":
         atr_tp = prev_close + atr_tp_dist
     else:
@@ -109,6 +209,7 @@ def analyze_symbol(symbol, timeframe):
         "current_price": prev_close,
         "move_direction": direction,
         "atr": current_atr,
+        "entry_mode": "fibonacci",
     }
 
     logger.info(

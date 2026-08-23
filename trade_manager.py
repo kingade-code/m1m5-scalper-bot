@@ -162,8 +162,8 @@ def _manage_trailing_stop(pos, current_price, atr):
     entry = pos.price_open
     current_sl = pos.sl
 
-    trail_start = atr * config.TRAILING_START_ATR
-    trail_step = atr * config.TRAILING_STEP_ATR
+    trail_start = atr * config.get_symbol_param(symbol, "TRAILING_START_ATR", config.TRAILING_START_ATR)
+    trail_step = atr * config.get_symbol_param(symbol, "TRAILING_STEP_ATR", config.TRAILING_STEP_ATR)
 
     new_sl = None
 

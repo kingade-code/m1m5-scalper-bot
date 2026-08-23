@@ -235,7 +235,7 @@ def main():
             logger.debug(f"Scanning {len(symbols)} symbols")
 
             for symbol in symbols:
-                for tf in config.TIMEFRAMES:
+                for tf in config.get_symbol_timeframes(symbol):
                     try:
                         # Only process on new candle close
                         if not _is_new_candle(symbol, tf):
