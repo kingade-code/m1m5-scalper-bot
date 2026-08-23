@@ -1,0 +1,58 @@
+                    KINGADE FOREX - PROPRIETARY LICENSE
+                    Copyright (c) 2026 Kingade Forex
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. DEFINITIONS
+
+   "License" shall mean the terms and conditions for use, reproduction,
+   and distribution as defined by this document.
+
+   "Licensor" shall mean Kingade Forex, the entity owning the intellectual
+   property rights to this software.
+
+   "You" (or "Your") shall mean an individual or legal entity exercising
+   permissions under this License.
+
+   "Software" shall mean the Kingade Scalper Bot and related files,
+   including but not limited to source code, configurations, and documentation.
+
+2. INTELLECTUAL PROPERTY RIGHTS
+
+   This Software is the exclusive intellectual property of Kingade Forex.
+   All rights not expressly granted herein are reserved by Kingade Forex.
+
+   This Software is protected by copyright law, international treaties,
+   and other intellectual property laws.
+
+3. RESTRICTIONS
+
+   You may NOT:
+   a) Copy, modify, or distribute the Software without written permission
+   b) Reverse engineer, decompile, or disassemble the Software
+   c) Remove or alter any proprietary notices or labels
+   d) Sublicense, rent, or lease the Software to third parties
+   e) Use the Software for commercial purposes without a valid License Key
+
+4. LICENSE KEY REQUIREMENT
+
+   A valid License Key (format: KNG-XXXX-XXXX-XXXX) is required to
+   operate this Software. License Keys are non-transferable and tied
+   to a specific MT5 account number.
+
+5. TERMINATION
+
+   This License is effective until terminated. Kingade Forex may terminate
+   this License at any time if you fail to comply with any term.
+
+6. DISCLAIMER OF WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.
+   KINGADE FOREX DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED.
+
+7. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL KINGADE FOREX BE LIABLE FOR ANY DAMAGES ARISING
+   FROM THE USE OF THIS SOFTWARE.
+
+By using this Software, you agree to be bound by these terms.

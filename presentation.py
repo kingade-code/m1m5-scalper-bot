@@ -1,3 +1,8 @@
+# Copyright (c) 2026 Kingade Forex. All rights reserved.
+# This software is licensed intellectual property.
+# Unauthorized copying, modification, distribution, or use is strictly prohibited.
+# A valid license key (KNG-XXXX-XXXX-XXXX) is required to run this bot.
+# Purchase at: https://sellix.io/kingadebot
 """
 Kingade Scalper Bot - Creative PowerPoint Presentation
 Generates a visually stunning .pptx with charts, metrics, and breakdowns.

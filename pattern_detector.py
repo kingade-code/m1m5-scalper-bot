@@ -1,3 +1,8 @@
+# Copyright (c) 2026 Kingade Forex. All rights reserved.
+# This software is licensed intellectual property.
+# Unauthorized copying, modification, distribution, or use is strictly prohibited.
+# A valid license key (KNG-XXXX-XXXX-XXXX) is required to run this bot.
+# Purchase at: https://sellix.io/kingadebot
 """Candlestick pattern detection for entry signals.
 
 Hammer/Star pattern: high-probability reversal signals on gold M1.
