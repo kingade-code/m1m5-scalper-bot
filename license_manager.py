@@ -1,9 +1,13 @@
-"""Offline license key manager with tier support.
+"""Offline license key manager with tier support and 3-day free trial.
 
 Key formats:
   KNG-M-XXXX-XXXX-XXXX (Monthly - $99/month)
   KNG-A-XXXX-XXXX-XXXX (Annual - $499/year)
   KNG-L-XXXX-XXXX-XXXX (Lifetime - $999)
+
+Trial:
+  First 3 days after install are free — no key required.
+  After 3 days, a valid license key is required.
 
 Validates: format + tier + whitelist from valid_keys.json
 Saves to: license.json (local file)
@@ -17,18 +21,18 @@ from datetime import datetime, timedelta
 LICENSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "license.json")
 KEYS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "valid_keys.json")
 
-# Key patterns for each tier
+TRIAL_DAYS = 3
+
 KEY_PATTERNS = {
     "monthly": re.compile(r"^KNG-M-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$"),
     "annual": re.compile(r"^KNG-A-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$"),
     "lifetime": re.compile(r"^KNG-L-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$"),
 }
 
-# Tier durations (for monthly and annual)
 TIER_DURATIONS = {
     "monthly": timedelta(days=30),
     "annual": timedelta(days=365),
-    "lifetime": None,  # No expiration
+    "lifetime": None,
 }
 
 TIER_NAMES = {
@@ -36,6 +40,45 @@ TIER_NAMES = {
     "annual": "Annual ($499/year)",
     "lifetime": "Lifetime ($999)",
 }
+
+
+def _get_trial_data():
+    """Load trial start date from license.json trial section."""
+    data = load_license()
+    return data.get("trial_start")
+
+
+def _start_trial():
+    """Mark trial start as now."""
+    data = load_license()
+    data["trial_start"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(LICENSE_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _check_trial():
+    """Check if trial is still active. Returns (is_active, message, days_left)."""
+    trial_start = _get_trial_data()
+
+    if not trial_start:
+        _start_trial()
+        trial_start = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    start = datetime.strptime(trial_start, "%Y-%m-%d %H:%M:%S")
+    expiry = start + timedelta(days=TRIAL_DAYS)
+    now = datetime.now()
+
+    if now < expiry:
+        days_left = (expiry - now).days
+        hours_left = (expiry - now).seconds // 3600
+        if days_left > 0:
+            msg = f"Free trial active — {days_left} day(s) remaining."
+        else:
+            msg = f"Free trial active — {hours_left} hour(s) remaining."
+        return True, msg, days_left
+    else:
+        days_expired = (now - expiry).days
+        return False, f"Free trial expired {days_expired} day(s) ago. Please enter a license key.", 0
 
 
 def detect_tier(key):
@@ -161,9 +204,9 @@ def validate_key_whitelist(key, tier):
 
 
 def validate():
-    """Main validation function. Returns True if license is valid."""
+    """Main validation function. Returns True if license or trial is valid."""
     print("\n" + "=" * 50)
-    print("  KINGADE FOREX - LICENSE VALIDATION")
+    print("  KINGADE SCALPER BOT - LICENSE VALIDATION")
     print("=" * 50)
 
     # Load existing license
@@ -174,12 +217,12 @@ def validate():
     # Existing valid license
     if key and account:
         tier = detect_tier(key)
-        
+
         # Check expiration
         valid_exp, exp_msg = check_expiration(lic_data)
         if not valid_exp:
             print(f"  {exp_msg}")
-            print("  Please enter a new license key.\n")
+            print("  Checking for free trial...\n")
         else:
             # Check whitelist
             valid, msg = validate_key_whitelist(key, tier)
@@ -194,10 +237,18 @@ def validate():
                 return True
             else:
                 print(f"  {msg}")
-                print("  Please enter a valid license key.\n")
+                print("  Checking for free trial...\n")
 
-    # Prompt for new key
-    print("  No valid license found.")
+    # Check free trial
+    trial_active, trial_msg, days_left = _check_trial()
+    if trial_active:
+        print(f"  {trial_msg}")
+        print(f"  No license key required during trial period.")
+        print(f"  Purchase a license at: https://t.me/KingAdeFx\n")
+        return True
+
+    # Trial expired — prompt for key
+    print(f"  {trial_msg}")
     print("  Enter your license key below.")
     print("  Formats:")
     print("    KNG-M-XXXX-XXXX-XXXX (Monthly - $99/month)")
