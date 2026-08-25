@@ -1,0 +1,19 @@
+{
+  "version": "2.1.0",
+  "min_version": "2.0.0",
+  "files": {
+    "main.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/main.py",
+    "signal_engine.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/signal_engine.py",
+    "config.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/config.py",
+    "filters.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/filters.py",
+    "pattern_detector.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/pattern_detector.py",
+    "swing_detector.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/swing_detector.py",
+    "fibonacci.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/fibonacci.py",
+    "mt5_connector.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/mt5_connector.py",
+    "license_manager.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/license_manager.py",
+    "trade_manager.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/trade_manager.py",
+    "telegram_notifier.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/telegram_notifier.py",
+    "updater.py": "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/updater.py"
+  },
+  "changelog": "v2.1.0 - Auto-update system, no-filter mode, PDF reports"
+}
