@@ -225,3 +225,20 @@ def notify_bot_started():
         f"<b>Auto-Trade:</b> ON"
     )
     return send_message(text)
+
+
+def notify_sl_trail(symbol, ticket, direction, old_sl, new_sl, current_price, profit):
+    """Send trailing stop update notification."""
+    emoji = "\U0001F7E2" if direction == "buy" else "\U0001F534"
+    locked_profit = current_price - new_sl if direction == "buy" else new_sl - current_price
+    text = (
+        f"<b>{emoji} TRAILING SL UPDATED</b>\n\n"
+        f"<b>Symbol:</b> {symbol}\n"
+        f"<b>Ticket:</b> #{ticket}\n"
+        f"<b>Direction:</b> {direction.upper()}\n"
+        f"<b>SL Moved:</b> {old_sl:.2f} → {new_sl:.2f}\n"
+        f"<b>Current Price:</b> {current_price:.2f}\n"
+        f"<b>Locked Profit:</b> {locked_profit:.2f} pts\n"
+        f"<b>Unrealized P/L:</b> ${profit:+.2f}"
+    )
+    return send_signal_to_group(text)

@@ -9,6 +9,7 @@ import mt5_connector as mt5c
 import filters
 import config
 import telegram_notifier as tg
+import telegram_notifier as tg
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,7 @@ def _manage_trailing_stop(pos, current_price, atr):
                 f"TRAILING STOP | {symbol} #{ticket} | "
                 f"SL: {current_sl:.5f} -> {new_sl:.5f}"
             )
+            tg.notify_sl_trail(symbol, ticket, direction, current_sl, new_sl, current_price, pos.profit)
         else:
             logger.debug(f"Trailing stop update failed for #{ticket}: {result}")
 
