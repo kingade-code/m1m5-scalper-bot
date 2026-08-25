@@ -83,7 +83,7 @@ MIN_BODY_RATIO = 0.10  # Lower bar for more entries
 USE_ATR_SL = True
 ATR_PERIOD = 14
 ATR_SL_MULTIPLIER = 4.0  # V2: SL4.0 = 62.4% WR, RR 1:1.48, PF 3.36
-MIN_STOP_DISTANCE = 5.0  # Lower for EURUSD/GBPUSD, XAUUSD will skip tight signals
+MIN_STOP_DISTANCE = 1.0  # Minimum SL distance in price points
 
 # ─── Scalper TP ───────────────────────────────────────────────────
 ATR_TP_MULTIPLIER = 5.0  # V2: TP5.0 = higher RR, PF 3.36
