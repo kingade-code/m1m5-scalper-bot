@@ -39,10 +39,10 @@ SYMBOL_LIST = ["XAUUSD", "GBPUSD", "AUDUSD"]
 SYMBOL_OVERRIDES = {
     "XAUUSD": {
         "TIMEFRAMES": [mt5.TIMEFRAME_M1],
-        "ATR_SL_MULTIPLIER": 2.0,
-        "ATR_TP_MULTIPLIER": 2.5,
-        "TRAILING_START_ATR": 1.0,
-        "TRAILING_STEP_ATR": 0.15,
+        "ATR_SL_MULTIPLIER": 2.5,
+        "ATR_TP_MULTIPLIER": 3.0,
+        "TRAILING_START_ATR": 0.5,
+        "TRAILING_STEP_ATR": 0.05,
         "SWING_LOOKBACK": 40,
         "TREND_EMA_PERIOD": 30,
         "ENTRY_MODE": "pattern",
@@ -53,7 +53,7 @@ def get_symbol_param(symbol, param, default=None):
     """Get config param, checking symbol overrides first."""
     if symbol in SYMBOL_OVERRIDES and param in SYMBOL_OVERRIDES[symbol]:
         return SYMBOL_OVERRIDES[symbol][param]
-    return getattr(__class__, param, default) if hasattr(__class__, param) else globals().get(param, default)
+    return globals().get(param, default)
 
 def get_symbol_timeframes(symbol):
     """Get timeframes for a symbol, checking overrides first."""
