@@ -80,8 +80,10 @@ def can_open_trade(symbol):
 def has_existing_signal(symbol, timeframe):
     """Check if we already have an open position for this symbol+timeframe."""
     positions = mt5c.get_positions_by_magic(symbol)
+    tf_name_map = {1: "M1", 5: "M5", 15: "M15", 30: "M30", 16385: "H1", 16388: "H4", 32769: "D1"}
+    tf_name = tf_name_map.get(timeframe, str(timeframe))
     for pos in positions:
-        if pos.comment and _tf_from_comment(pos.comment) == str(timeframe):
+        if pos.comment and _tf_from_comment(pos.comment) == tf_name:
             return True
     return False
 
