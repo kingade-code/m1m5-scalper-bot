@@ -45,8 +45,9 @@ def _analyze_pattern(symbol, timeframe):
     if raw_direction == 0:
         return None
 
-    # Convert int to string for downstream code
+    # Convert int to string for internal use
     direction = "bullish" if raw_direction == 1 else "bearish"
+    signal_direction = "buy" if raw_direction == 1 else "sell"
 
     # Use second-to-last candle (last closed)
     prev_bar = df.iloc[-2]
@@ -92,7 +93,7 @@ def _analyze_pattern(symbol, timeframe):
         "symbol": symbol,
         "timeframe": timeframe,
         "timeframe_name": timeframe_name,
-        "direction": direction,
+        "direction": signal_direction,
         "entry_price": prev_close,
         "entry_zone_high": prev_close,
         "entry_zone_low": prev_close,
@@ -201,11 +202,12 @@ def _analyze_fibonacci(symbol, timeframe):
         return None
 
     timeframe_name = _tf_name(timeframe)
+    fib_direction = entry_zone["direction"]
     signal = {
         "symbol": symbol,
         "timeframe": timeframe,
         "timeframe_name": timeframe_name,
-        "direction": entry_zone["direction"],
+        "direction": "buy" if fib_direction == "bullish" else "sell",
         "entry_price": prev_close,
         "entry_zone_high": entry_zone["entry_zone_high"],
         "entry_zone_low": entry_zone["entry_zone_low"],
@@ -215,7 +217,7 @@ def _analyze_fibonacci(symbol, timeframe):
         "swing_high": sh_price,
         "swing_low": sl_price,
         "current_price": prev_close,
-        "move_direction": direction,
+        "move_direction": fib_direction,
         "atr": current_atr,
         "entry_mode": "fibonacci",
     }
