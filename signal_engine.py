@@ -40,10 +40,13 @@ def _analyze_pattern(symbol, timeframe):
     if df is None or len(df) < 30:
         return None
 
-    # Detect pattern
-    direction = pattern_detector.detect_pattern(df)
-    if direction is None:
+    # Detect pattern (returns 1, -1, or 0)
+    raw_direction = pattern_detector.detect_pattern(df)
+    if raw_direction == 0:
         return None
+
+    # Convert int to string for downstream code
+    direction = "bullish" if raw_direction == 1 else "bearish"
 
     # Use second-to-last candle (last closed)
     prev_bar = df.iloc[-2]
