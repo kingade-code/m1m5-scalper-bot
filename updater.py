@@ -11,7 +11,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-VERSION_URL = "https://raw.githubusercontent.com/kingade-code/m1m5-scalper-bot/main/version.json"
+GITHUB_REPO = "kingade-code/m1m5-scalper-bot"
+GITHUB_TOKEN = "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"
 LOCAL_VERSION_FILE = "version.json"
 BACKUP_DIR = "_backup"
 PROTECTED_FILES = ["config.py", "license.json", "valid_keys.json"]
@@ -27,9 +28,16 @@ def get_local_version():
 
 def get_remote_version():
     try:
-        resp = requests.get(VERSION_URL, timeout=15)
+        headers = {}
+        if GITHUB_TOKEN and GITHUB_TOKEN != "ghp_":
+            headers["Authorization"] = f"token {GITHUB_TOKEN}"
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/version.json"
+        resp = requests.get(url, headers=headers, timeout=15)
         if resp.status_code == 200:
-            return resp.json()
+            import base64
+            data = resp.json()
+            content = base64.b64decode(data["content"]).decode("utf-8")
+            return json.loads(content)
     except Exception as e:
         logger.debug(f"Update check failed: {e}")
     return None
@@ -45,10 +53,16 @@ def file_hash(filepath):
 
 def download_file(url, dest):
     try:
-        resp = requests.get(url, timeout=30)
+        headers = {}
+        if GITHUB_TOKEN and GITHUB_TOKEN != "ghp_":
+            headers["Authorization"] = f"token {GITHUB_TOKEN}"
+        resp = requests.get(url, headers=headers, timeout=30)
         if resp.status_code == 200:
+            import base64
+            data = resp.json()
+            content = base64.b64decode(data["content"]).decode("utf-8")
             with open(dest, "w", encoding="utf-8", newline="\n") as f:
-                f.write(resp.text)
+                f.write(content)
             return True
     except Exception as e:
         logger.warning(f"Failed to download {url}: {e}")
@@ -89,8 +103,11 @@ def check_and_update():
         if filename in PROTECTED_FILES:
             continue
 
+        local_entry = local_files.get(filename, {})
+        if isinstance(local_entry, str):
+            local_entry = {}
         local_md5 = file_hash(filename)
-        remote_md5 = local_files.get(filename, {}).get("md5", "")
+        remote_md5 = local_entry.get("md5", "")
 
         if local_md5 == remote_md5 and os.path.exists(filename):
             continue
@@ -100,7 +117,7 @@ def check_and_update():
 
         if download_file(url, filename):
             new_md5 = file_hash(filename)
-            if filename not in local_files:
+            if filename not in local_files or isinstance(local_files[filename], str):
                 local_files[filename] = {}
             local_files[filename]["md5"] = new_md5
             updated += 1
