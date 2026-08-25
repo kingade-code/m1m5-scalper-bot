@@ -65,15 +65,15 @@ def get_symbol_timeframes(symbol):
 # "fibonacci" = Fibonacci retracement zone (default for forex)
 # "pattern" = Candlestick pattern detection (Hammer/Star for gold)
 ENTRY_MODE = "fibonacci"
-REQUIRE_CONFIRMATION = True
+REQUIRE_CONFIRMATION = False
 CONFIRMATION_CANDLES = 1
 
 # ─── Trend Filter ─────────────────────────────────────────────────
-USE_TREND_FILTER = True
+USE_TREND_FILTER = False
 TREND_EMA_PERIOD = 40  # Optimized: EMA40 + SL2.5 = 66.7% WR
 
 # ─── Momentum Filter ──────────────────────────────────────────────
-USE_MOMENTUM_FILTER = True
+USE_MOMENTUM_FILTER = False
 RSI_PERIOD = 14
 RSI_OVERSOLD = 55  # Relaxed RSI filter
 RSI_OVERBOUGHT = 45  # Relaxed RSI filter
