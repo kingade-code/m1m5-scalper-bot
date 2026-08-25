@@ -64,6 +64,13 @@ def _check_market_hours():
     global _market_paused
     
     if _is_market_open():
+        # Clean up stale PAUSED file from a previous session on startup
+        if _is_paused() and os.path.exists(PAUSE_FILE):
+            with open(PAUSE_FILE, "r") as f:
+                content = f.read().strip()
+            if content == "market_closed":
+                os.remove(PAUSE_FILE)
+                logger.info("Cleaned up stale market_closed pause file")
         if _market_paused:
             _market_paused = False
             if _is_paused():
