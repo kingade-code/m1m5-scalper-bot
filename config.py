@@ -40,7 +40,7 @@ SYMBOL_OVERRIDES = {
     "XAUUSD": {
         "TIMEFRAMES": [mt5.TIMEFRAME_M1],
         "ATR_SL_MULTIPLIER": 2.5,
-        "ATR_TP_MULTIPLIER": 3.0,
+        "ATR_TP_MULTIPLIER": 5.0,
         "TRAILING_START_ATR": 0.5,
         "TRAILING_STEP_ATR": 0.15,
         "SWING_LOOKBACK": 40,
