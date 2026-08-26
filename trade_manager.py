@@ -14,8 +14,6 @@ logger = logging.getLogger(__name__)
 
 # Track bar counts for max-bars exit
 _bar_counts = {}
-# Track open times for each position
-_open_times = {}
 
 
 def calculate_lot_size(symbol, entry_price, sl_price):
@@ -119,8 +117,7 @@ def execute_signal(signal):
     )
 
     if result is not None:
-        _bar_counts[result.order] = 0
-        _open_times[result.order] = mt5.symbol_info_tick(symbol).time
+        _bar_counts[str(result.order)] = 0
 
     return result
 

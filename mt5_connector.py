@@ -193,6 +193,9 @@ def close_position(ticket):
         else mt5.ORDER_TYPE_BUY
     )
     symbol_info = get_symbol_info(position.symbol)
+    if symbol_info is None:
+        logger.error(f"Cannot get symbol info for {position.symbol}")
+        return None
     price = symbol_info.bid if position.type == mt5.ORDER_TYPE_BUY else symbol_info.ask
 
     request = {

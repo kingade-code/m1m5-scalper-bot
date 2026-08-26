@@ -99,26 +99,6 @@ def send_signal_to_group(text, parse_mode="HTML"):
     logger.info("Group signal skipped (disabled)")
     return False
 
-    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
-    try:
-        payload = {
-            "chat_id": config.TELEGRAM_GROUP_CHAT_ID,
-            "message_thread_id": config.TELEGRAM_GROUP_THREAD_ID,
-            "text": text,
-            "parse_mode": parse_mode,
-        }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=15)
-        result = json.loads(resp.read())
-        if result.get("ok"):
-            _record_signal_sent()
-            logger.info("Signal sent to FREE SIGNALS topic")
-            return True
-    except Exception as e:
-        logger.error(f"Telegram group error: {e}")
-    return False
-
 
 def send_document(file_path, caption=""):
     """Send a file (PDF/PPTX) to all configured Telegram chats."""

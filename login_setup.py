@@ -30,7 +30,12 @@ def _load_credentials():
 
 def _save_credentials(login, password, server):
     """Save credentials to file."""
-    data = {"login": int(login), "password": password, "server": server}
+    try:
+        login_int = int(login)
+    except (ValueError, TypeError):
+        print(f"  Error: Login must be a number, got '{login}'")
+        return
+    data = {"login": login_int, "password": password, "server": server}
     with open(CREDENTIALS_FILE, "w") as f:
         json.dump(data, f, indent=2)
     print(f"  Credentials saved to {CREDENTIALS_FILE}")

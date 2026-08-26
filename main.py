@@ -371,14 +371,13 @@ def main():
                             f"{'='*50}"
                         )
 
-                        # Notify Telegram
-                        tg.notify_signal(signal_data)
-
                         # Execute
                         order_result = trade_manager.execute_signal(signal_data)
 
                         if order_result:
                             _last_trade_time[symbol] = time.time()
+                            # Notify Telegram only after successful order
+                            tg.notify_signal(signal_data)
                             tg.notify_trade_opened(signal_data, order_result)
 
                     except Exception as e:

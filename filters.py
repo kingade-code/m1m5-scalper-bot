@@ -109,21 +109,3 @@ def check_momentum_filter(df, direction):
 
     return True
 
-
-def calc_atr_sl(df, entry_price, direction):
-    """Calculate ATR-based stop loss distance.
-
-    Returns SL price based on ATR(14) * ATR_SL_MULTIPLIER.
-    """
-    if not config.USE_ATR_SL:
-        return None
-
-    atr = calc_atr(df["high"], df["low"], df["close"], config.ATR_PERIOD)
-    current_atr = atr.iloc[-2]
-
-    sl_distance = current_atr * config.ATR_SL_MULTIPLIER
-
-    if direction == "bullish":
-        return entry_price - sl_distance
-    else:
-        return entry_price + sl_distance

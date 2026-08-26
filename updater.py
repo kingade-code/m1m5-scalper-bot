@@ -13,6 +13,14 @@ logger = logging.getLogger(__name__)
 
 GITHUB_REPO = "kingade-code/m1m5-scalper-bot"
 GITHUB_TOKEN = "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"
+
+
+def _parse_version(v):
+    """Parse version string 'x.y.z' into tuple of ints for comparison."""
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except (ValueError, AttributeError):
+        return (0, 0, 0)
 LOCAL_VERSION_FILE = "version.json"
 BACKUP_DIR = "_backup"
 PROTECTED_FILES = ["config.py", "license.json", "valid_keys.json"]
@@ -89,7 +97,7 @@ def check_and_update():
     remote_files = remote.get("files", {})
     changelog = remote.get("changelog", "")
 
-    if remote_ver <= local_ver:
+    if _parse_version(remote_ver) <= _parse_version(local_ver):
         logger.info(f"Already up to date (v{local_ver})")
         return False
 
