@@ -81,7 +81,10 @@ def _analyze_pattern(symbol, timeframe):
     # Skip if SL distance too small
     sl_dist = abs(prev_close - swing_sl)
     min_stop = config.get_symbol_param(symbol, "MIN_STOP_DISTANCE", config.MIN_STOP_DISTANCE)
+    max_stop = config.get_symbol_param(symbol, "MAX_SL_DISTANCE", 0)
     if sl_dist < min_stop:
+        return None
+    if max_stop > 0 and sl_dist > max_stop:
         return None
 
     # TP based on SL distance * 2.5 (1:2.5 RR)
@@ -199,7 +202,10 @@ def _analyze_fibonacci(symbol, timeframe):
     # Skip if SL distance too small for broker minimum
     sl_dist = abs(prev_close - swing_sl)
     min_stop = config.get_symbol_param(symbol, "MIN_STOP_DISTANCE", config.MIN_STOP_DISTANCE)
+    max_stop = config.get_symbol_param(symbol, "MAX_SL_DISTANCE", 0)
     if sl_dist < min_stop:
+        return None
+    if max_stop > 0 and sl_dist > max_stop:
         return None
 
     # TP based on SL distance * 2.5 (1:2.5 RR)

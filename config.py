@@ -61,6 +61,7 @@ SYMBOL_OVERRIDES = {
         "SPREAD": 0.2,
         "RR_RATIO": 2.5,
         "MIN_STOP_DISTANCE": 0.0005,
+        "MAX_SL_DISTANCE": 0.005,
     },
     "AUDUSD": {
         "TIMEFRAMES": [mt5.TIMEFRAME_M1, mt5.TIMEFRAME_M5],
@@ -72,6 +73,7 @@ SYMBOL_OVERRIDES = {
         "SPREAD": 0.2,
         "RR_RATIO": 2.5,
         "MIN_STOP_DISTANCE": 0.0005,
+        "MAX_SL_DISTANCE": 0.005,
     },
 }
 
