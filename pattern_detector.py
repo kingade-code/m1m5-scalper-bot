@@ -34,9 +34,9 @@ def detect_hammer_star(df):
     lower = min(o, c) - l
     upper = h - max(o, c)
     
-    if lower > body * 2 and body / full < 0.35 and c >= o:
+    if lower > body * 2 and body / full < 0.35 and c > o:
         return 1
-    if upper > body * 2 and body / full < 0.35 and o >= c:
+    if upper > body * 2 and body / full < 0.35 and o > c:
         return -1
     
     return 0
