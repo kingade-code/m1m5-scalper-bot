@@ -72,13 +72,19 @@ def _analyze_pattern(symbol, timeframe):
     spread = config.get_symbol_param(symbol, "SPREAD", 0)
     spread_price = spread * 0.10
 
-    # Wick SL (prev bar low/high)
-    if direction == "bullish":
-        swing_sl = prev_bar["low"] + spread_price
+    # SL calculation
+    sl_method = config.get_symbol_param(symbol, "SL_METHOD", "wick")
+    if sl_method == "current_bar":
+        if direction == "bullish":
+            swing_sl = df.iloc[-1]["low"] + spread_price
+        else:
+            swing_sl = df.iloc[-1]["high"] - spread_price
     else:
-        swing_sl = prev_bar["high"] - spread_price
-
-    # Skip if SL distance too small
+        # Wick SL (prev bar low/high)
+        if direction == "bullish":
+            swing_sl = prev_bar["low"] + spread_price
+        else:
+            swing_sl = prev_bar["high"] - spread_price
     sl_dist = abs(prev_close - swing_sl)
     min_stop = config.get_symbol_param(symbol, "MIN_STOP_DISTANCE", config.MIN_STOP_DISTANCE)
     max_stop = config.get_symbol_param(symbol, "MAX_SL_DISTANCE", 0)
@@ -193,11 +199,19 @@ def _analyze_fibonacci(symbol, timeframe):
     spread = config.get_symbol_param(symbol, "SPREAD", 0)
     spread_price = spread * 0.10  # Convert pips to price
 
-    # Wick SL (prev bar low/high)
-    if direction == "bullish":
-        swing_sl = prev_bar["low"] + spread_price
+    # SL calculation
+    sl_method = config.get_symbol_param(symbol, "SL_METHOD", "wick")
+    if sl_method == "current_bar":
+        if direction == "bullish":
+            swing_sl = df.iloc[-1]["low"] + spread_price
+        else:
+            swing_sl = df.iloc[-1]["high"] - spread_price
     else:
-        swing_sl = prev_bar["high"] - spread_price
+        # Wick SL (prev bar low/high)
+        if direction == "bullish":
+            swing_sl = prev_bar["low"] + spread_price
+        else:
+            swing_sl = prev_bar["high"] - spread_price
 
     # Skip if SL distance too small for broker minimum
     sl_dist = abs(prev_close - swing_sl)
