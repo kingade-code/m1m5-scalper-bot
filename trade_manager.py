@@ -9,7 +9,6 @@ import mt5_connector as mt5c
 import filters
 import config
 import telegram_notifier as tg
-import telegram_notifier as tg
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +118,7 @@ def execute_signal(signal):
         _bar_counts[result.order] = 0
         _open_times[result.order] = mt5.symbol_info_tick(symbol).time
 
-    return result is not None
+    return result
 
 
 def manage_open_positions():
@@ -192,6 +191,11 @@ def _manage_trailing_stop(pos, current_price, atr):
         symbol_info = mt5.symbol_info(pos.symbol)
         if symbol_info:
             new_sl = round(new_sl, symbol_info.digits)
+            min_dist = config.MIN_STOP_DISTANCE * symbol_info.point
+            if direction == "buy" and (current_price - new_sl) < min_dist:
+                new_sl = current_price - min_dist
+            elif direction == "sell" and (new_sl - current_price) < min_dist:
+                new_sl = current_price + min_dist
 
         request = {
             "action": mt5.TRADE_ACTION_SLTP,

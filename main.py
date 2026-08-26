@@ -117,7 +117,7 @@ _last_candle_time = {}
 _last_report_date = None
 _last_weekly_report = None
 _last_trade_time = {}  # cooldown tracking
-TRADE_COOLDOWN_SECONDS = 900  # 15 minutes
+TRADE_COOLDOWN_SECONDS = 600  # 10 minutes
 
 
 def _is_new_candle(symbol, timeframe):
@@ -219,7 +219,7 @@ def main():
         sys.exit(1)
 
     # Notify bot started
-    # tg.notify_bot_started()
+    tg.notify_bot_started()
 
     try:
         logger.info("Bot started. Scanning for Kingade setups...")
