@@ -67,9 +67,13 @@ def _analyze_pattern(symbol, timeframe):
     atr_series = filters.calc_atr(df["high"], df["low"], df["close"], config.ATR_PERIOD)
     current_atr = atr_series.iloc[-2]
 
-    # ATR-based SL
+    # Spread in price (0.3 pip = 0.03 for XAUUSD)
+    spread = config.get_symbol_param(symbol, "SPREAD", 0)
+    spread_price = spread * 0.10  # Convert pips to price
+
+    # ATR-based SL + spread
     atr_sl_mult = config.get_symbol_param(symbol, "ATR_SL_MULTIPLIER", config.ATR_SL_MULTIPLIER)
-    atr_sl_dist = current_atr * atr_sl_mult
+    atr_sl_dist = current_atr * atr_sl_mult + spread_price
     if direction == "bullish":
         atr_sl = prev_close - atr_sl_dist
     else:
@@ -77,7 +81,7 @@ def _analyze_pattern(symbol, timeframe):
 
     # ATR-based TP
     atr_tp_mult = config.get_symbol_param(symbol, "ATR_TP_MULTIPLIER", config.ATR_TP_MULTIPLIER)
-    atr_tp_dist = current_atr * atr_tp_mult
+    atr_tp_dist = current_atr * atr_tp_mult + spread_price
     if direction == "bullish":
         atr_tp = prev_close + atr_tp_dist
     else:
@@ -177,10 +181,14 @@ def _analyze_fibonacci(symbol, timeframe):
     atr_series = filters.calc_atr(df["high"], df["low"], df["close"], config.ATR_PERIOD)
     current_atr = atr_series.iloc[-2]
 
+    # Spread in price (0.3 pip = 0.03 for XAUUSD)
+    spread = config.get_symbol_param(symbol, "SPREAD", 0)
+    spread_price = spread * 0.10  # Convert pips to price
+
     # ATR-based SL (matching backtest exactly)
     atr_sl_mult = config.get_symbol_param(symbol, "ATR_SL_MULTIPLIER", config.ATR_SL_MULTIPLIER)
     if config.USE_ATR_SL:
-        atr_sl_dist = current_atr * atr_sl_mult
+        atr_sl_dist = current_atr * atr_sl_mult + spread_price
         if direction == "bullish":
             atr_sl = prev_close - atr_sl_dist
         else:
@@ -190,7 +198,7 @@ def _analyze_fibonacci(symbol, timeframe):
 
     # ATR-based TP (tight scalper target)
     atr_tp_mult = config.get_symbol_param(symbol, "ATR_TP_MULTIPLIER", config.ATR_TP_MULTIPLIER)
-    atr_tp_dist = current_atr * atr_tp_mult
+    atr_tp_dist = current_atr * atr_tp_mult + spread_price
     if direction == "bullish":
         atr_tp = prev_close + atr_tp_dist
     else:

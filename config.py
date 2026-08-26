@@ -46,6 +46,7 @@ SYMBOL_OVERRIDES = {
         "SWING_LOOKBACK": 40,
         "TREND_EMA_PERIOD": 30,
         "ENTRY_MODE": "pattern",
+        "SPREAD": 0.3,
     },
 }
 
