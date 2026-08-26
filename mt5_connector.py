@@ -3,6 +3,8 @@
 # Unauthorized copying, modification, distribution, or use is strictly prohibited.
 # A valid license key (KNG-XXXX-XXXX-XXXX) is required to run this bot.
 # Purchase at: https://sellix.io/kingadebot
+import os
+import json
 import MetaTrader5 as mt5
 import pandas as pd
 import logging
@@ -10,18 +12,40 @@ import config
 
 logger = logging.getLogger(__name__)
 
+CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mt5_credentials.json")
+
+
+def _load_credentials():
+    """Load credentials from file if available."""
+    if not os.path.exists(CREDENTIALS_FILE):
+        return {}
+    try:
+        with open(CREDENTIALS_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
 
 def initialize():
     """Initialize connection to MetaTrader 5 terminal."""
     init_args = {}
+
+    # Priority: config.py > credentials file > auto-detect (no login)
+    if config.MT5_LOGIN and config.MT5_PASSWORD:
+        init_args["login"] = config.MT5_LOGIN
+        init_args["password"] = config.MT5_PASSWORD
+        init_args["server"] = config.MT5_SERVER
+    else:
+        saved = _load_credentials()
+        if saved.get("login"):
+            init_args["login"] = saved["login"]
+            if saved.get("password"):
+                init_args["password"] = saved["password"]
+            if saved.get("server"):
+                init_args["server"] = saved["server"]
+
     if config.MT5_PATH:
         init_args["path"] = config.MT5_PATH
-    if config.MT5_LOGIN:
-        init_args["login"] = config.MT5_LOGIN
-    if config.MT5_PASSWORD:
-        init_args["password"] = config.MT5_PASSWORD
-    if config.MT5_SERVER:
-        init_args["server"] = config.MT5_SERVER
     init_args["timeout"] = config.MT5_TIMEOUT
 
     if not mt5.initialize(**init_args):

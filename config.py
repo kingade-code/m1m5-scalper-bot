@@ -7,9 +7,9 @@ import MetaTrader5 as mt5
 
 # ─── MT5 Connection ───────────────────────────────────────────────
 MT5_PATH = None
-MT5_LOGIN = 476188356
-MT5_PASSWORD = "Trail123@"
-MT5_SERVER = "Exness-MT5Trial9"
+MT5_LOGIN = None
+MT5_PASSWORD = None
+MT5_SERVER = None
 MT5_TIMEOUT = 10_000
 
 # ─── Timeframes ───────────────────────────────────────────────────

@@ -15,6 +15,7 @@ debug*.py
 
 # Secrets - never commit
 config_local.py
+mt5_credentials.json
 
 # OS
 Thumbs.db
