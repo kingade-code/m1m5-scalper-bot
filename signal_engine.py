@@ -10,6 +10,7 @@ import swing_detector
 import fibonacci
 import filters
 import pattern_detector
+import choch
 import config
 
 logger = logging.getLogger(__name__)
@@ -169,6 +170,11 @@ def _analyze_fibonacci(symbol, timeframe):
     # Trend filter: only trade in direction of H1 trend
     if not filters.check_trend_filter(df, direction, symbol):
         logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by trend filter")
+        return None
+
+    # CHoCH filter: require change of character confirmation
+    if config.USE_CHOCH and not choch.detect_choch(df, direction):
+        logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by CHoCH filter")
         return None
 
     # Momentum filter: RSI + candle body ratio

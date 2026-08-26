@@ -75,6 +75,9 @@ CONFIRMATION_CANDLES = 1
 USE_TREND_FILTER = True
 TREND_EMA_PERIOD = 40  # Optimized: EMA40 + SL2.5 = 66.7% WR
 
+# ─── CHoCH Filter ───────────────────────────────────────────────
+USE_CHOCH = True
+
 # ─── Momentum Filter ──────────────────────────────────────────────
 USE_MOMENTUM_FILTER = False
 RSI_PERIOD = 14
