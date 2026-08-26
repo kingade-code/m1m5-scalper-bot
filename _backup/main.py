@@ -18,6 +18,7 @@ import telegram_notifier as tg
 import daily_report
 import login_setup
 import license_manager
+import updater
 
 # ─── Pause Control ────────────────────────────────────────────────
 PAUSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PAUSED")
@@ -64,13 +65,6 @@ def _check_market_hours():
     global _market_paused
     
     if _is_market_open():
-        # Clean up stale PAUSED file from a previous session on startup
-        if _is_paused() and os.path.exists(PAUSE_FILE):
-            with open(PAUSE_FILE, "r") as f:
-                content = f.read().strip()
-            if content == "market_closed":
-                os.remove(PAUSE_FILE)
-                logger.info("Cleaned up stale market_closed pause file")
         if _market_paused:
             _market_paused = False
             if _is_paused():
@@ -116,8 +110,6 @@ signal.signal(signal.SIGTERM, _shutdown_handler)
 _last_candle_time = {}
 _last_report_date = None
 _last_weekly_report = None
-_last_trade_time = {}  # cooldown tracking
-TRADE_COOLDOWN_SECONDS = 900  # 15 minutes
 
 
 def _is_new_candle(symbol, timeframe):
@@ -218,6 +210,12 @@ def main():
         logger.error("License validation failed. Bot will exit.")
         sys.exit(1)
 
+    # Check for updates (restarts if updated)
+    try:
+        updater.run_update_check()
+    except Exception as e:
+        logger.debug(f"Update check skipped: {e}")
+
     # Notify bot started
     # tg.notify_bot_started()
 
@@ -270,17 +268,6 @@ def main():
                             )
                             continue
 
-                        # Check cooldown between trades on same symbol
-                        now = time.time()
-                        if symbol in _last_trade_time:
-                            elapsed = now - _last_trade_time[symbol]
-                            if elapsed < TRADE_COOLDOWN_SECONDS:
-                                remaining = int((TRADE_COOLDOWN_SECONDS - elapsed) / 60)
-                                logger.debug(
-                                    f"{symbol} {tf_name}: cooldown {remaining}min remaining, skipping"
-                                )
-                                continue
-
                         # ─── Signal Confirmation Dashboard ───────────
                         direction = signal_data["direction"].upper()
                         emoji = "\U0001F7E2" if direction == "BUY" else "\U0001F534"
@@ -310,7 +297,6 @@ def main():
                         order_result = trade_manager.execute_signal(signal_data)
 
                         if order_result:
-                            _last_trade_time[symbol] = time.time()
                             tg.notify_trade_opened(signal_data, order_result)
 
                     except Exception as e:

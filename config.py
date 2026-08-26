@@ -25,7 +25,7 @@ FIB_ENTRY_HIGH = 0.786
 
 # ─── Risk Management ─────────────────────────────────────────────
 RISK_PERCENT = 4.0  # Conservative — 50% less risk, same 77.3% WR
-MAX_POSITIONS = 10
+MAX_POSITIONS = 1
 MAX_POSITIONS_PER_SYMBOL = 1
 MAGIC_NUMBER = 777777
 SLIPPAGE = 3
@@ -42,7 +42,7 @@ SYMBOL_OVERRIDES = {
         "ATR_SL_MULTIPLIER": 2.5,
         "ATR_TP_MULTIPLIER": 3.0,
         "TRAILING_START_ATR": 0.5,
-        "TRAILING_STEP_ATR": 0.05,
+        "TRAILING_STEP_ATR": 0.15,
         "SWING_LOOKBACK": 40,
         "TREND_EMA_PERIOD": 30,
         "ENTRY_MODE": "pattern",
@@ -69,7 +69,7 @@ REQUIRE_CONFIRMATION = False
 CONFIRMATION_CANDLES = 1
 
 # ─── Trend Filter ─────────────────────────────────────────────────
-USE_TREND_FILTER = False
+USE_TREND_FILTER = True
 TREND_EMA_PERIOD = 40  # Optimized: EMA40 + SL2.5 = 66.7% WR
 
 # ─── Momentum Filter ──────────────────────────────────────────────

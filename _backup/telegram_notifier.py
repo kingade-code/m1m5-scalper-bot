@@ -10,54 +10,11 @@ import os
 import uuid
 import urllib.request
 import logging
-import time
-from datetime import datetime, date
 import config
 
 logger = logging.getLogger(__name__)
 
 _boundary = uuid.uuid4().hex
-
-# Rate limiting for group signals
-_last_signal_time = 0
-_daily_trade_count = 0
-_daily_trade_date = None
-SIGNAL_COOLDOWN_SECONDS = 20 * 60  # 20 minutes
-MAX_DAILY_TRADES = 10
-
-
-def _can_send_signal():
-    """Check if we can send a signal to the group (rate limits)."""
-    global _last_signal_time, _daily_trade_count, _daily_trade_date
-
-    now = time.time()
-    today = date.today()
-
-    # Reset daily counter if new day
-    if _daily_trade_date != today:
-        _daily_trade_date = today
-        _daily_trade_count = 0
-
-    # Check daily limit
-    if _daily_trade_count >= MAX_DAILY_TRADES:
-        logger.info(f"Daily trade limit reached ({MAX_DAILY_TRADES}), skipping group signal")
-        return False
-
-    # Check cooldown
-    elapsed = now - _last_signal_time
-    if elapsed < SIGNAL_COOLDOWN_SECONDS:
-        remaining = int((SIGNAL_COOLDOWN_SECONDS - elapsed) / 60)
-        logger.info(f"Signal cooldown active ({remaining}min remaining), skipping group signal")
-        return False
-
-    return True
-
-
-def _record_signal_sent():
-    """Record that a signal was sent to the group."""
-    global _last_signal_time, _daily_trade_count
-    _last_signal_time = time.time()
-    _daily_trade_count += 1
 
 
 def send_message(text, parse_mode="HTML"):
@@ -92,13 +49,6 @@ def send_signal_to_group(text, parse_mode="HTML"):
     if not config.TELEGRAM_ENABLED:
         return False
 
-    if not _can_send_signal():
-        return False
-
-    # Group signals temporarily disabled
-    logger.info("Group signal skipped (disabled)")
-    return False
-
     url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
         payload = {
@@ -112,7 +62,6 @@ def send_signal_to_group(text, parse_mode="HTML"):
         resp = urllib.request.urlopen(req, timeout=15)
         result = json.loads(resp.read())
         if result.get("ok"):
-            _record_signal_sent()
             logger.info("Signal sent to FREE SIGNALS topic")
             return True
     except Exception as e:
@@ -194,7 +143,8 @@ def notify_signal(signal):
         f"<b>Timeframe:</b> {signal['timeframe_name']}\n"
         f"<b>Entry:</b> {signal['entry_price']:.2f}\n"
         f"<b>Stop Loss:</b> {signal['sl']:.2f}\n"
-        f"<b>Take Profit:</b> {signal['tp1']:.2f}\n\n"
+        f"<b>Take Profit:</b> {signal['tp1']:.2f}\n"
+        f"<b>ATR:</b> {signal.get('atr', 0):.2f}\n\n"
         f"<i>Auto-executing...</i>"
     )
     send_signal_to_group(text)
@@ -213,7 +163,8 @@ def notify_trade_opened(signal, result):
         f"<b>Direction:</b> {direction}\n"
         f"<b>Entry Price:</b> {price:.2f}\n"
         f"<b>Stop Loss:</b> {signal['sl']:.2f}\n"
-        f"<b>Take Profit:</b> {signal['tp1']:.2f}"
+        f"<b>Take Profit:</b> {signal['tp1']:.2f}\n"
+        f"<b>Ticket:</b> #{result.order if result else 'N/A'}"
     )
     send_signal_to_group(text)
     return send_message(text)
@@ -230,7 +181,9 @@ def notify_trade_closed(position, profit):
         f"<b>Symbol:</b> {position.symbol}\n"
         f"<b>Direction:</b> {direction}\n"
         f"<b>Entry:</b> {position.price_open:.2f}\n"
-        f"<b>Volume:</b> {position.volume}"
+        f"<b>Volume:</b> {position.volume}\n"
+        f"<b>P/L:</b> ${profit:+.2f}\n"
+        f"<b>Ticket:</b> #{position.ticket}"
     )
     send_signal_to_group(text)
     return send_message(text)
@@ -272,20 +225,3 @@ def notify_bot_started():
         f"<b>Auto-Trade:</b> ON"
     )
     return send_message(text)
-
-
-def notify_sl_trail(symbol, ticket, direction, old_sl, new_sl, current_price, profit):
-    """Send trailing stop update notification."""
-    emoji = "\U0001F7E2" if direction == "buy" else "\U0001F534"
-    locked_profit = current_price - new_sl if direction == "buy" else new_sl - current_price
-    text = (
-        f"<b>{emoji} TRAILING SL UPDATED</b>\n\n"
-        f"<b>Symbol:</b> {symbol}\n"
-        f"<b>Ticket:</b> #{ticket}\n"
-        f"<b>Direction:</b> {direction.upper()}\n"
-        f"<b>SL Moved:</b> {old_sl:.2f} → {new_sl:.2f}\n"
-        f"<b>Current Price:</b> {current_price:.2f}\n"
-        f"<b>Locked Profit:</b> {locked_profit:.2f} pts\n"
-        f"<b>Unrealized P/L:</b> ${profit:+.2f}"
-    )
-    return send_signal_to_group(text)
