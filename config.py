@@ -24,7 +24,7 @@ FIB_ENTRY_LOW = 0.5
 FIB_ENTRY_HIGH = 0.786
 
 # ─── Risk Management ─────────────────────────────────────────────
-RISK_PERCENT = 4.0  # Conservative — 50% less risk, same 77.3% WR
+RISK_PERCENT = 5.0
 MAX_POSITIONS = 1
 MAX_POSITIONS_PER_SYMBOL = 1
 MAGIC_NUMBER = 777777
