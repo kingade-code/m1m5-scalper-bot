@@ -41,12 +41,9 @@ SYMBOL_LIST = ["XAUUSD", "GBPUSD", "AUDUSD"]
 SYMBOL_OVERRIDES = {
     "XAUUSD": {
         "TIMEFRAMES": [mt5.TIMEFRAME_M1],
-        "ATR_SL_MULTIPLIER": 2.5,
-        "ATR_TP_MULTIPLIER": 5.0,
         "TRAILING_START_ATR": 0.3,
         "TRAILING_STEP_ATR": 0.1,
         "SWING_LOOKBACK": 40,
-        "TREND_EMA_PERIOD": 30,
         "ENTRY_MODE": "pattern",
         "SPREAD": 0.3,
         "RR_RATIO": 4.0,
@@ -57,7 +54,6 @@ SYMBOL_OVERRIDES = {
         "TRAILING_START_ATR": 0.3,
         "TRAILING_STEP_ATR": 0.1,
         "SWING_LOOKBACK": 40,
-        "TREND_EMA_PERIOD": 30,
         "ENTRY_MODE": "fibonacci",
         "SPREAD": 0.2,
         "RR_RATIO": 4.0,
@@ -69,7 +65,6 @@ SYMBOL_OVERRIDES = {
         "TRAILING_START_ATR": 0.3,
         "TRAILING_STEP_ATR": 0.1,
         "SWING_LOOKBACK": 40,
-        "TREND_EMA_PERIOD": 30,
         "ENTRY_MODE": "fibonacci",
         "SPREAD": 0.2,
         "RR_RATIO": 4.0,
@@ -91,15 +86,11 @@ def get_symbol_timeframes(symbol):
     return TIMEFRAMES
 
 # ─── Entry Mode ───────────────────────────────────────────────────
-# "fibonacci" = Fibonacci retracement zone (default for forex)
-# "pattern" = Candlestick pattern detection (Hammer/Star for gold)
 ENTRY_MODE = "fibonacci"
 REQUIRE_CONFIRMATION = False
-CONFIRMATION_CANDLES = 1
 
 # ─── Trend Filter ─────────────────────────────────────────────────
 USE_TREND_FILTER = True
-TREND_EMA_PERIOD = 40  # Optimized: EMA40 + SL2.5 = 66.7% WR
 
 # ─── CHoCH Filter ───────────────────────────────────────────────
 USE_CHOCH = False
@@ -107,26 +98,21 @@ USE_CHOCH = False
 # ─── Momentum Filter ──────────────────────────────────────────────
 USE_MOMENTUM_FILTER = False
 RSI_PERIOD = 14
-RSI_OVERSOLD = 55  # Relaxed RSI filter
-RSI_OVERBOUGHT = 45  # Relaxed RSI filter
-MIN_BODY_RATIO = 0.10  # Lower bar for more entries
+RSI_OVERSOLD = 55
+RSI_OVERBOUGHT = 45
+MIN_BODY_RATIO = 0.10
 
-# ─── ATR Stop Loss ───────────────────────────────────────────────
-USE_ATR_SL = True
+# ─── ATR ─────────────────────────────────────────────────────────
 ATR_PERIOD = 14
-ATR_SL_MULTIPLIER = 4.0  # V2: SL4.0 = 62.4% WR, RR 1:1.48, PF 3.36
-MIN_STOP_DISTANCE = 1.0  # Minimum SL distance in price points
-
-# ─── Scalper TP ───────────────────────────────────────────────────
-ATR_TP_MULTIPLIER = 5.0  # V2: TP5.0 = higher RR, PF 3.36
+MIN_STOP_DISTANCE = 1.0
 
 # ─── Trailing Stop ────────────────────────────────────────────────
 USE_TRAILING_STOP = True
-TRAILING_START_ATR = 1.0  # V2: wider trail start = higher RR
-TRAILING_STEP_ATR = 0.12  # V2: tighter step = better profit capture
+TRAILING_START_ATR = 1.0
+TRAILING_STEP_ATR = 0.12
 
 # ─── Max Bars in Trade ────────────────────────────────────────────
-MAX_BARS_IN_TRADE = 15  # Very fast exits for scalping
+MAX_BARS_IN_TRADE = 15
 
 # ─── Logging ──────────────────────────────────────────────────────
 LOG_LEVEL = "DEBUG"

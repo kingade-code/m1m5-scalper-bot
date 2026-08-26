@@ -200,13 +200,11 @@ def _is_new_candle(symbol, timeframe):
 def _print_banner():
     print("=" * 60)
     print("  KINGADE SCALPER BOT")
-    print("  Entry Zone: 0.5 - 0.786 | ATR-based SL/TP")
-    print(f"  Timeframes: {' | '.join(_tf_name(tf) for tf in config.TIMEFRAMES)}")
-    print(f"  Risk Per Trade: {config.RISK_PERCENT}%")
-    print(f"  Max Positions: {config.MAX_POSITIONS}")
-    print(f"  Trailing Stop: {config.USE_TRAILING_STOP}")
-    print(f"  Max Bars: {config.MAX_BARS_IN_TRADE}")
-    print(f"  Magic Number: {config.MAGIC_NUMBER}")
+    print("  EMA10/EMA100 Trend | Pattern+Fib Entry | Wick SL")
+    print(f"  RR Ratio: 1:{config.RISK_PERCENT}% | Max Risk: ${config.MAX_RISK_PER_TRADE}")
+    print(f"  Max Positions: {config.MAX_POSITIONS} | Max Lot: {config.MAX_LOT}")
+    print(f"  Trailing Stop: {config.USE_TRAILING_STOP} | Max Bars: {config.MAX_BARS_IN_TRADE}")
+    print(f"  Scan Interval: {config.SCAN_INTERVAL_SECONDS}s")
     print("=" * 60)
 
 

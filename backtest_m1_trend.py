@@ -14,7 +14,8 @@ import filters
 # ─── Backtest Config ──────────────────────────────────────────────
 INITIAL_BALANCE = 500.0
 RISK_PER_TRADE = config.RISK_PERCENT  # 4%
-MAX_LOT = config.MAX_LOT  # 0.05
+MAX_LOT = config.MAX_LOT  # 0.10
+MAX_RISK_DOLLARS = config.MAX_RISK_PER_TRADE  # $20
 BACKTEST_SYMBOLS = ["XAUUSD", "GBPUSD", "AUDUSD"]
 BACKTEST_TIMEFRAMES = [mt5.TIMEFRAME_M1]
 BACKTEST_MONTHS = 2  # ~60 days
@@ -175,15 +176,16 @@ def run_backtest():
 
     bars_needed = 96 * 22 * BACKTEST_MONTHS + 500  # More bars for M1
 
-    # Pre-fetch M1 data for trend filter
+    # Pre-fetch M1 data for trend filter (EMA10/EMA100)
     trend_data = {}
     if config.USE_TREND_FILTER:
         for symbol in BACKTEST_SYMBOLS:
             trend_bars = 96 * 22 * BACKTEST_MONTHS + 500
             trend_df = get_ohlc(symbol, TREND_TF, trend_bars)
-            if trend_df is not None and len(trend_df) > config.TREND_EMA_PERIOD + 10:
-                trend_ema = filters.calc_ema(trend_df["close"], config.TREND_EMA_PERIOD)
-                trend_data[symbol] = {"df": trend_df, "ema": trend_ema}
+            if trend_df is not None and len(trend_df) > 160:
+                fast_ema = filters.calc_ema(trend_df["close"], 10)
+                slow_ema = filters.calc_ema(trend_df["close"], 100)
+                trend_data[symbol] = {"df": trend_df, "fast": fast_ema, "slow": slow_ema}
 
     all_trades = []
     balance = INITIAL_BALANCE
@@ -262,18 +264,22 @@ def run_backtest():
                 prev_bar = df.iloc[i - 1]
                 prev_close = prev_bar["close"]
 
-                # ─── Trend filter (M1 EMA50) ─────────────────────────
+                # ─── Trend filter (EMA10/EMA100) ────────────────────────
                 if config.USE_TREND_FILTER and symbol in trend_data:
                     t_info = trend_data[symbol]
                     t_df = t_info["df"]
-                    t_ema = t_info["ema"]
+                    t_fast = t_info["fast"]
+                    t_slow = t_info["slow"]
                     t_idx = t_df["time"].searchsorted(current_time, side="right") - 1
                     if t_idx > 0 and t_idx < len(t_df):
                         t_price = t_df.iloc[t_idx]["close"]
-                        t_ema_val = t_ema.iloc[t_idx]
-                        if direction == "bullish" and t_price < t_ema_val:
+                        f_val = t_fast.iloc[t_idx]
+                        s_val = t_slow.iloc[t_idx]
+                        uptrend = f_val > s_val
+                        downtrend = f_val < s_val
+                        if direction == "bullish" and not (uptrend and t_price > f_val):
                             continue
-                        if direction == "bearish" and t_price > t_ema_val:
+                        if direction == "bearish" and not (downtrend and t_price < f_val):
                             continue
 
                 # ─── Wick SL (prev bar low/high) + spread ────────────
@@ -294,8 +300,9 @@ def run_backtest():
                 else:
                     atr_tp = prev_close - tp_dist
 
-                # ─── Lot sizing (4% risk, max 0.05) ─────────────────
+                # ─── Lot sizing (4% risk, max $20, max 0.10 lot) ──────
                 risk_amount = balance * RISK_PER_TRADE / 100.0
+                risk_amount = min(risk_amount, MAX_RISK_DOLLARS)
                 sl_ticks = sl_dist / tick_size
                 lot_size = risk_amount / (sl_ticks * tick_value)
                 lot_size = max(0.01, round(lot_size, 2))
@@ -452,7 +459,7 @@ def _print_results(r):
     print(f"  Initial Balance:      ${r['initial_balance']:>14,.2f}")
     print(f"  Final Balance:        ${r['final_balance']:>14,.2f}")
     print(f"  Net P/L:              ${r['total_pnl']:>14,.2f}  ({r['total_pnl_pct']:+.2f}%)")
-    print(f"  Risk Per Trade:       {RISK_PER_TRADE}% | Max Lot: {MAX_LOT}")
+    print(f"  Risk Per Trade:       {RISK_PER_TRADE}% | Max Lot: {MAX_LOT} | Max Risk: ${MAX_RISK_DOLLARS}")
 
     print(f"\n  {'TRADE STATISTICS':^{w-4}}")
     print(f"  {'-'*(w-4)}")
@@ -530,3 +537,111 @@ def _print_results(r):
 if __name__ == "__main__":
     result = run_backtest()
     mt5.shutdown()
+
+    # Generate PDF report
+    if result:
+        from fpdf import FPDF
+        import telegram_notifier as tg
+        from datetime import datetime
+
+        r = result
+
+        class PDF(FPDF):
+            def header(self):
+                self.set_font("Helvetica", "B", 20)
+                self.set_text_color(255, 140, 0)
+                self.cell(0, 12, "KINGADE SCALPER BOT", new_x="LMARGIN", new_y="NEXT", align="C")
+                self.set_font("Helvetica", "", 10)
+                self.set_text_color(100, 100, 100)
+                self.cell(0, 6, "Backtest Performance Report", new_x="LMARGIN", new_y="NEXT", align="C")
+                self.cell(0, 5, "EMA(10)/EMA(100) Trend | M1 Pattern | Wick SL | Trail | 1:2.5 RR", new_x="LMARGIN", new_y="NEXT", align="C")
+                self.cell(0, 5, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT", align="C")
+                self.ln(2)
+                self.set_draw_color(255, 140, 0)
+                self.set_line_width(0.8)
+                self.line(10, self.get_y(), 200, self.get_y())
+                self.ln(4)
+
+            def footer(self):
+                self.set_y(-15)
+                self.set_font("Helvetica", "I", 8)
+                self.set_text_color(150, 150, 150)
+                self.cell(0, 10, f"Kingade Forex | {self.page_no()}", align="C")
+
+            def section_title(self, title):
+                self.set_font("Helvetica", "B", 13)
+                self.set_text_color(255, 140, 0)
+                self.cell(0, 8, title, new_x="LMARGIN", new_y="NEXT")
+                self.set_draw_color(255, 140, 0)
+                self.set_line_width(0.3)
+                self.line(10, self.get_y(), 80, self.get_y())
+                self.ln(3)
+
+            def stat_row(self, label, value, bold=False):
+                self.set_font("Helvetica", "B" if bold else "", 10)
+                self.set_text_color(50, 50, 50)
+                self.cell(80, 6, label)
+                self.set_font("Helvetica", "B" if bold else "", 10)
+                self.set_text_color(0, 0, 0)
+                self.cell(0, 6, str(value), new_x="LMARGIN", new_y="NEXT")
+
+        pdf = PDF()
+        pdf.set_auto_page_break(auto=True, margin=20)
+        pdf.add_page()
+
+        # Account Summary
+        pdf.section_title("ACCOUNT SUMMARY")
+        pdf.stat_row("Initial Balance", f"${r['initial_balance']:,.2f}")
+        pdf.stat_row("Final Balance", f"${r['final_balance']:,.2f}")
+        pdf.stat_row("Net P/L", f"${r['total_pnl']:+,.2f} ({r['total_pnl_pct']:+.1f}%)", bold=True)
+        pdf.stat_row("Risk Per Trade", f"{RISK_PER_TRADE}% | Max Lot: {MAX_LOT} | Max Risk: ${MAX_RISK_DOLLARS}")
+        pdf.ln(4)
+
+        # Trade Statistics
+        pdf.section_title("TRADE STATISTICS")
+        pdf.stat_row("Total Trades", str(r['total_trades']))
+        pdf.stat_row("Winning / Losing", f"{r['wins']} / {r['losses']}")
+        pdf.stat_row("Win Rate", f"{r['win_rate']:.1f}%", bold=True)
+        pdf.stat_row("Profit Factor", f"{r['profit_factor']:.2f}", bold=True)
+        pdf.stat_row("Avg R:R", f"{r['avg_rr']:.2f}")
+        pdf.stat_row("Expectancy/Trade", f"${r['expectancy']:+,.2f}")
+        pdf.stat_row("Avg Bars Held", f"{r['avg_bars_held']:.1f}")
+        pdf.ln(4)
+
+        # Risk Metrics
+        pdf.section_title("RISK METRICS")
+        pdf.stat_row("Max Drawdown", f"${r['max_dd']:,.2f} ({r['max_dd_pct']:.1f}%)")
+        pdf.stat_row("Sharpe Ratio", f"{r['sharpe']:.2f}")
+        pdf.stat_row("Recovery Factor", f"{r['recovery']:.2f}")
+        pdf.stat_row("Calmar Ratio", f"{r['calmar']:.2f}")
+        pdf.ln(4)
+
+        # Win/Loss
+        pdf.section_title("WIN / LOSS")
+        pdf.stat_row("Avg Win", f"${r['avg_win']:+,.2f}")
+        pdf.stat_row("Avg Loss", f"${r['avg_loss']:+,.2f}")
+        pdf.stat_row("Largest Win", f"${r['largest_win']:+,.2f}")
+        pdf.stat_row("Largest Loss", f"${r['largest_loss']:+,.2f}")
+        pdf.ln(4)
+
+        # By Symbol
+        pdf.section_title("BY SYMBOL")
+        for sym, s in sorted(r["sym_stats"].items(), key=lambda x: x[1]["pnl"], reverse=True):
+            wr = (s["wins"] / s["trades"] * 100) if s["trades"] else 0
+            pdf.stat_row(sym, f"{s['trades']} trades | WR {wr:.1f}% | P/L ${s['pnl']:+,.2f}")
+        pdf.ln(4)
+
+        # Monthly
+        pdf.section_title("MONTHLY P/L")
+        cum = 0
+        for m, pnl in sorted(r["monthly"].items()):
+            cum += pnl
+            pdf.stat_row(m, f"${pnl:+,.2f} (cum: ${cum:+,.2f})")
+
+        # Save PDF
+        pdf_path = r"C:\Users\kinga\Documents\My Site\backtest_report.pdf"
+        pdf.output(pdf_path)
+
+        # Send to Telegram
+        tg.send_document(pdf_path, caption="Kingade Scalper Bot - EMA(10)/EMA(100) Backtest Report")
+        print(f"PDF sent to Telegram: {pdf_path}")

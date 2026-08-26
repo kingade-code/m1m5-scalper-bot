@@ -120,7 +120,7 @@ def _analyze_pattern(symbol, timeframe):
         "tp2": atr_tp,
         "swing_high": 0,
         "swing_low": 0,
-        "current_price": prev_close,
+        "current_price": current_price,
         "move_direction": direction,
         "atr": current_atr,
         "entry_mode": "pattern",
@@ -129,7 +129,7 @@ def _analyze_pattern(symbol, timeframe):
     logger.info(
         f"SIGNAL | {symbol} {timeframe_name} | "
         f"{signal['direction'].upper()} | "
-        f"Entry: {prev_close:.5f} | "
+        f"Entry: {current_price:.5f} | "
         f"SL: {signal['sl']:.5f} | TP: {signal['tp1']:.5f} | "
         f"ATR: {current_atr:.5f} | Pattern: Hammer+Engulf"
     )
@@ -227,8 +227,8 @@ def _analyze_fibonacci(symbol, timeframe):
     if max_stop > 0 and sl_dist > max_stop:
         return None
 
-    # TP based on SL distance * 2.5 (1:2.5 RR)
-    rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 2.5)
+    # TP based on SL distance * RR ratio
+    rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 4.0)
     tp_dist = sl_dist * rr_ratio
     if direction == "bullish":
         atr_tp = prev_close + tp_dist
