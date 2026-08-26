@@ -28,6 +28,8 @@ def calculate_lot_size(symbol, entry_price, sl_price):
         return None
 
     risk_amount = account.balance * config.RISK_PERCENT / 100.0
+    # Cap risk at $20 per trade
+    risk_amount = min(risk_amount, config.MAX_RISK_PER_TRADE)
     sl_distance = abs(entry_price - sl_price)
 
     if sl_distance == 0:
