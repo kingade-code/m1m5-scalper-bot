@@ -76,7 +76,7 @@ USE_TREND_FILTER = True
 TREND_EMA_PERIOD = 40  # Optimized: EMA40 + SL2.5 = 66.7% WR
 
 # ─── CHoCH Filter ───────────────────────────────────────────────
-USE_CHOCH = True
+USE_CHOCH = False
 
 # ─── Momentum Filter ──────────────────────────────────────────────
 USE_MOMENTUM_FILTER = False
