@@ -70,11 +70,9 @@ def _analyze_pattern(symbol, timeframe):
 
     # Spread in price (0.3 pip = 0.03 for XAUUSD)
     spread = config.get_symbol_param(symbol, "SPREAD", 0)
-    spread_price = spread * 0.10  # Convert pips to price
+    spread_price = spread * 0.10
 
     # Wick SL (prev bar low/high)
-    spread = config.get_symbol_param(symbol, "SPREAD", 0)
-    spread_price = spread * 0.10
     if direction == "bullish":
         swing_sl = prev_bar["low"] + spread_price
     else:
