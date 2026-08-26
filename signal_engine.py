@@ -52,7 +52,12 @@ def _analyze_pattern(symbol, timeframe):
 
     # Use second-to-last candle (last closed)
     prev_bar = df.iloc[-2]
-    prev_close = prev_bar["close"]
+
+    # Current market price for immediate entry
+    symbol_info = mt5c.get_symbol_info(symbol)
+    if symbol_info is None:
+        return None
+    current_price = symbol_info.ask if signal_direction == "buy" else symbol_info.bid
 
     # Trend filter: only trade in direction of H1 trend
     if not filters.check_trend_filter(df, direction, symbol):
@@ -85,7 +90,7 @@ def _analyze_pattern(symbol, timeframe):
             swing_sl = prev_bar["low"] + spread_price
         else:
             swing_sl = prev_bar["high"] - spread_price
-    sl_dist = abs(prev_close - swing_sl)
+    sl_dist = abs(current_price - swing_sl)
     min_stop = config.get_symbol_param(symbol, "MIN_STOP_DISTANCE", config.MIN_STOP_DISTANCE)
     max_stop = config.get_symbol_param(symbol, "MAX_SL_DISTANCE", 0)
     if sl_dist < min_stop:
@@ -97,9 +102,9 @@ def _analyze_pattern(symbol, timeframe):
     rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 2.5)
     tp_dist = sl_dist * rr_ratio
     if direction == "bullish":
-        atr_tp = prev_close + tp_dist
+        atr_tp = current_price + tp_dist
     else:
-        atr_tp = prev_close - tp_dist
+        atr_tp = current_price - tp_dist
 
     timeframe_name = _tf_name(timeframe)
     signal = {
@@ -107,9 +112,9 @@ def _analyze_pattern(symbol, timeframe):
         "timeframe": timeframe,
         "timeframe_name": timeframe_name,
         "direction": signal_direction,
-        "entry_price": prev_close,
-        "entry_zone_high": prev_close,
-        "entry_zone_low": prev_close,
+        "entry_price": current_price,
+        "entry_zone_high": current_price,
+        "entry_zone_low": current_price,
         "sl": swing_sl,
         "tp1": atr_tp,
         "tp2": atr_tp,

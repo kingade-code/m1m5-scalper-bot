@@ -139,4 +139,4 @@ TELEGRAM_GROUP_CHAT_ID = -1002127450559  # KINGADE FOREX group
 TELEGRAM_GROUP_THREAD_ID = 3  # FREE SIGNALS topic
 
 # ─── Scan Interval ────────────────────────────────────────────────
-SCAN_INTERVAL_SECONDS = 10
+SCAN_INTERVAL_SECONDS = 5
