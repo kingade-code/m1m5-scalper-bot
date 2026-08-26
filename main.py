@@ -19,6 +19,42 @@ import daily_report
 import login_setup
 import license_manager
 
+# ─── Single Instance Lock ──────────────────────────────────────────
+LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.lock")
+
+def _acquire_lock():
+    """Ensure only one bot instance runs. Kill stale locks if process is dead."""
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r") as f:
+                old_pid = int(f.read().strip())
+            # Check if that process is still alive
+            os.kill(old_pid, 0)
+            # Process exists — another instance is running
+            print(f"Another bot instance is running (PID {old_pid}). Exiting.")
+            return False
+        except (ProcessLookupError, ValueError):
+            # Stale lock — previous process died
+            os.remove(LOCK_FILE)
+        except PermissionError:
+            # Can't check, assume alive
+            print(f"Another bot instance may be running. Exiting.")
+            return False
+    with open(LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    return True
+
+def _release_lock():
+    """Remove lock file on exit."""
+    try:
+        if os.path.exists(LOCK_FILE):
+            with open(LOCK_FILE, "r") as f:
+                pid = int(f.read().strip())
+            if pid == os.getpid():
+                os.remove(LOCK_FILE)
+    except Exception:
+        pass
+
 # ─── Pause Control ────────────────────────────────────────────────
 PAUSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PAUSED")
 
@@ -205,6 +241,10 @@ def _check_weekly_report():
 def main():
     _print_banner()
 
+    # Ensure only one instance runs
+    if not _acquire_lock():
+        sys.exit(1)
+
     # Prompt for login if not configured
     login_setup.setup_login()
 
@@ -270,6 +310,13 @@ def main():
                             )
                             continue
 
+                        # Double-check position limits
+                        if not trade_manager.can_open_trade(symbol):
+                            logger.info(
+                                f"Position limit reached for {symbol}, skipping"
+                            )
+                            continue
+
                         # Check cooldown between trades on same symbol
                         now = time.time()
                         if symbol in _last_trade_time:
@@ -331,6 +378,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     finally:
+        _release_lock()
         mt5c.shutdown()
         logger.info("Bot shut down cleanly")
 
