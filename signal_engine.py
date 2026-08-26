@@ -79,18 +79,18 @@ def _analyze_pattern(symbol, timeframe):
     else:
         swing_sl = swing_window["high"].max() - spread_price
 
-    # ATR-based TP
-    atr_tp_mult = config.get_symbol_param(symbol, "ATR_TP_MULTIPLIER", config.ATR_TP_MULTIPLIER)
-    atr_tp_dist = current_atr * atr_tp_mult + spread_price
-    if direction == "bullish":
-        atr_tp = prev_close + atr_tp_dist
-    else:
-        atr_tp = prev_close - atr_tp_dist
-
     # Skip if SL distance too small
     sl_dist = abs(prev_close - swing_sl)
     if sl_dist < config.MIN_STOP_DISTANCE:
         return None
+
+    # TP based on SL distance * 2.5 (1:2.5 RR)
+    rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 2.5)
+    tp_dist = sl_dist * rr_ratio
+    if direction == "bullish":
+        atr_tp = prev_close + tp_dist
+    else:
+        atr_tp = prev_close - tp_dist
 
     timeframe_name = _tf_name(timeframe)
     signal = {
@@ -192,18 +192,18 @@ def _analyze_fibonacci(symbol, timeframe):
     else:
         swing_sl = swing_window["high"].max() - spread_price
 
-    # ATR-based TP (tight scalper target)
-    atr_tp_mult = config.get_symbol_param(symbol, "ATR_TP_MULTIPLIER", config.ATR_TP_MULTIPLIER)
-    atr_tp_dist = current_atr * atr_tp_mult + spread_price
-    if direction == "bullish":
-        atr_tp = prev_close + atr_tp_dist
-    else:
-        atr_tp = prev_close - atr_tp_dist
-
     # Skip if SL distance too small for broker minimum
     sl_dist = abs(prev_close - swing_sl)
     if sl_dist < config.MIN_STOP_DISTANCE:
         return None
+
+    # TP based on SL distance * 2.5 (1:2.5 RR)
+    rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 2.5)
+    tp_dist = sl_dist * rr_ratio
+    if direction == "bullish":
+        atr_tp = prev_close + tp_dist
+    else:
+        atr_tp = prev_close - tp_dist
 
     timeframe_name = _tf_name(timeframe)
     fib_direction = entry_zone["direction"]

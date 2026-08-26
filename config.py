@@ -47,6 +47,7 @@ SYMBOL_OVERRIDES = {
         "TREND_EMA_PERIOD": 30,
         "ENTRY_MODE": "pattern",
         "SPREAD": 0.3,
+        "RR_RATIO": 2.5,
     },
 }
 
