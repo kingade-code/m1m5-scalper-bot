@@ -71,13 +71,13 @@ def _analyze_pattern(symbol, timeframe):
     spread = config.get_symbol_param(symbol, "SPREAD", 0)
     spread_price = spread * 0.10  # Convert pips to price
 
-    # ATR-based SL + spread
-    atr_sl_mult = config.get_symbol_param(symbol, "ATR_SL_MULTIPLIER", config.ATR_SL_MULTIPLIER)
-    atr_sl_dist = current_atr * atr_sl_mult + spread_price
+    # Swing 5-bar SL (recent swing low/high)
+    swing_lookback = config.get_symbol_param(symbol, "SWING_LOOKBACK", 40)
+    swing_window = df.iloc[-6:-1]  # Last 5 bars before signal
     if direction == "bullish":
-        atr_sl = prev_close - atr_sl_dist
+        swing_sl = swing_window["low"].min() + spread_price
     else:
-        atr_sl = prev_close + atr_sl_dist
+        swing_sl = swing_window["high"].max() - spread_price
 
     # ATR-based TP
     atr_tp_mult = config.get_symbol_param(symbol, "ATR_TP_MULTIPLIER", config.ATR_TP_MULTIPLIER)
@@ -88,7 +88,7 @@ def _analyze_pattern(symbol, timeframe):
         atr_tp = prev_close - atr_tp_dist
 
     # Skip if SL distance too small
-    sl_dist = abs(prev_close - atr_sl)
+    sl_dist = abs(prev_close - swing_sl)
     if sl_dist < config.MIN_STOP_DISTANCE:
         return None
 
@@ -101,7 +101,7 @@ def _analyze_pattern(symbol, timeframe):
         "entry_price": prev_close,
         "entry_zone_high": prev_close,
         "entry_zone_low": prev_close,
-        "sl": atr_sl,
+        "sl": swing_sl,
         "tp1": atr_tp,
         "tp2": atr_tp,
         "swing_high": 0,
@@ -117,7 +117,7 @@ def _analyze_pattern(symbol, timeframe):
         f"{signal['direction'].upper()} | "
         f"Entry: {prev_close:.5f} | "
         f"SL: {signal['sl']:.5f} | TP: {signal['tp1']:.5f} | "
-        f"ATR: {current_atr:.5f} | Pattern: Hammer/Star"
+        f"ATR: {current_atr:.5f} | Pattern: Hammer+Engulf"
     )
 
     return signal
@@ -185,16 +185,12 @@ def _analyze_fibonacci(symbol, timeframe):
     spread = config.get_symbol_param(symbol, "SPREAD", 0)
     spread_price = spread * 0.10  # Convert pips to price
 
-    # ATR-based SL (matching backtest exactly)
-    atr_sl_mult = config.get_symbol_param(symbol, "ATR_SL_MULTIPLIER", config.ATR_SL_MULTIPLIER)
-    if config.USE_ATR_SL:
-        atr_sl_dist = current_atr * atr_sl_mult + spread_price
-        if direction == "bullish":
-            atr_sl = prev_close - atr_sl_dist
-        else:
-            atr_sl = prev_close + atr_sl_dist
+    # Swing 5-bar SL (recent swing low/high)
+    swing_window = df.iloc[-6:-1]  # Last 5 bars before signal
+    if direction == "bullish":
+        swing_sl = swing_window["low"].min() + spread_price
     else:
-        atr_sl = entry_zone["sl"]
+        swing_sl = swing_window["high"].max() - spread_price
 
     # ATR-based TP (tight scalper target)
     atr_tp_mult = config.get_symbol_param(symbol, "ATR_TP_MULTIPLIER", config.ATR_TP_MULTIPLIER)
@@ -205,7 +201,7 @@ def _analyze_fibonacci(symbol, timeframe):
         atr_tp = prev_close - atr_tp_dist
 
     # Skip if SL distance too small for broker minimum
-    sl_dist = abs(prev_close - atr_sl)
+    sl_dist = abs(prev_close - swing_sl)
     if sl_dist < config.MIN_STOP_DISTANCE:
         return None
 
@@ -219,7 +215,7 @@ def _analyze_fibonacci(symbol, timeframe):
         "entry_price": prev_close,
         "entry_zone_high": entry_zone["entry_zone_high"],
         "entry_zone_low": entry_zone["entry_zone_low"],
-        "sl": atr_sl,
+        "sl": swing_sl,
         "tp1": atr_tp,
         "tp2": entry_zone.get("tp2", atr_tp),
         "swing_high": sh_price,
