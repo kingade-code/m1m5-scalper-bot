@@ -52,8 +52,8 @@ def check_trend_filter(df, direction, symbol=None):
 
     import mt5_connector as mt5c
 
-    fast_period = 20
-    slow_period = 200
+    fast_period = 10
+    slow_period = 100
     need_bars = slow_period + 50
 
     h1_df = mt5c.get_ohlc(symbol, 1, need_bars)  # M1 timeframe
