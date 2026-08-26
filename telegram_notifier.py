@@ -143,8 +143,7 @@ def notify_signal(signal):
         f"<b>Timeframe:</b> {signal['timeframe_name']}\n"
         f"<b>Entry:</b> {signal['entry_price']:.2f}\n"
         f"<b>Stop Loss:</b> {signal['sl']:.2f}\n"
-        f"<b>Take Profit:</b> {signal['tp1']:.2f}\n"
-        f"<b>ATR:</b> {signal.get('atr', 0):.2f}\n\n"
+        f"<b>Take Profit:</b> {signal['tp1']:.2f}\n\n"
         f"<i>Auto-executing...</i>"
     )
     send_signal_to_group(text)
@@ -163,8 +162,7 @@ def notify_trade_opened(signal, result):
         f"<b>Direction:</b> {direction}\n"
         f"<b>Entry Price:</b> {price:.2f}\n"
         f"<b>Stop Loss:</b> {signal['sl']:.2f}\n"
-        f"<b>Take Profit:</b> {signal['tp1']:.2f}\n"
-        f"<b>Ticket:</b> #{result.order if result else 'N/A'}"
+        f"<b>Take Profit:</b> {signal['tp1']:.2f}"
     )
     send_signal_to_group(text)
     return send_message(text)
@@ -181,9 +179,7 @@ def notify_trade_closed(position, profit):
         f"<b>Symbol:</b> {position.symbol}\n"
         f"<b>Direction:</b> {direction}\n"
         f"<b>Entry:</b> {position.price_open:.2f}\n"
-        f"<b>Volume:</b> {position.volume}\n"
-        f"<b>P/L:</b> ${profit:+.2f}\n"
-        f"<b>Ticket:</b> #{position.ticket}"
+        f"<b>Volume:</b> {position.volume}"
     )
     send_signal_to_group(text)
     return send_message(text)
