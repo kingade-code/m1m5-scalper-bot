@@ -42,8 +42,30 @@ def detect_hammer_star(df):
     return 0
 
 
+def detect_engulfing(df):
+    """Detect Bullish or Bearish Engulfing on the last two closed candles.
+    
+    Returns: 1 (bullish), -1 (bearish), or 0 (none)
+    """
+    if df is None or len(df) < 4:
+        return 0
+    
+    prev = df.iloc[-3]
+    curr = df.iloc[-2]
+    
+    po, pc = prev["open"], prev["close"]
+    o, h, l, c = curr["open"], curr["high"], curr["low"], curr["close"]
+    
+    if pc < po and c > o and o <= pc and c >= po:
+        return 1
+    if pc > po and c < o and o >= pc and c <= po:
+        return -1
+    
+    return 0
+
+
 def detect_pattern(df, pattern_name=None):
-    """Detect Hammer/Star pattern for gold entry signals.
+    """Detect Hammer/Star and Engulfing patterns for entry signals.
     
     Returns: 1 (bullish), -1 (bearish), or 0 (none)
     """
@@ -54,4 +76,12 @@ def detect_pattern(df, pattern_name=None):
     if entry_mode != "pattern":
         return 0
     
-    return detect_hammer_star(df)
+    hammer = detect_hammer_star(df)
+    if hammer != 0:
+        return hammer
+    
+    engulf = detect_engulfing(df)
+    if engulf != 0:
+        return engulf
+    
+    return 0
