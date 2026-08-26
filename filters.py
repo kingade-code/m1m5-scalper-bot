@@ -36,11 +36,11 @@ def calc_atr(high, low, close, period=14):
 
 
 def check_trend_filter(df, direction, symbol=None):
-    """Check if trade direction aligns with higher timeframe trend.
+    """Check if trade direction aligns with MA trend filter.
 
-    Uses H1 EMA50 as trend filter.
-    If EMA50 is rising and price > EMA50 => uptrend => allow buys only.
-    If EMA50 is falling and price < EMA50 => downtrend => allow sells only.
+    Fast MA(20) vs Slow MA(200):
+    - Uptrend: fast MA > slow MA AND price > fast MA => allow buys
+    - Downtrend: fast MA < slow MA AND price < fast MA => allow sells
 
     Returns True if direction aligns with trend, False otherwise.
     """
@@ -52,22 +52,27 @@ def check_trend_filter(df, direction, symbol=None):
 
     import mt5_connector as mt5c
 
-    ema_period = config.get_symbol_param(symbol, "TREND_EMA_PERIOD", config.TREND_EMA_PERIOD)
-    h1_df = mt5c.get_ohlc(symbol, 1, ema_period + 50)  # M1 timeframe
-    if h1_df is None or len(h1_df) < ema_period + 10:
+    fast_period = 20
+    slow_period = 200
+    need_bars = slow_period + 50
+
+    h1_df = mt5c.get_ohlc(symbol, 1, need_bars)  # M1 timeframe
+    if h1_df is None or len(h1_df) < slow_period + 10:
         return True
 
-    ema = calc_ema(h1_df["close"], ema_period)
-    current_ema = ema.iloc[-1]
-    prev_ema = ema.iloc[-2]
+    fast_ema = calc_ema(h1_df["close"], fast_period)
+    slow_ema = calc_ema(h1_df["close"], slow_period)
+
+    fast_now = fast_ema.iloc[-1]
+    slow_now = slow_ema.iloc[-1]
     current_price = h1_df.iloc[-1]["close"]
 
-    ema_rising = current_ema > prev_ema
-    ema_falling = current_ema < prev_ema
+    uptrend = fast_now > slow_now
+    downtrend = fast_now < slow_now
 
-    if direction == "bullish" and (current_price > current_ema or ema_rising):
+    if direction == "bullish" and uptrend and current_price > fast_now:
         return True
-    if direction == "bearish" and (current_price < current_ema or ema_falling):
+    if direction == "bearish" and downtrend and current_price < fast_now:
         return True
 
     return False
