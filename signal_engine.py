@@ -42,7 +42,7 @@ def _analyze_pattern(symbol, timeframe):
         return None
 
     # Detect pattern (returns 1, -1, or 0)
-    raw_direction = pattern_detector.detect_pattern(df)
+    raw_direction = pattern_detector.detect_pattern(df, symbol=symbol)
     if raw_direction == 0:
         return None
 

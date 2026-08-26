@@ -64,13 +64,14 @@ def detect_engulfing(df):
     return 0
 
 
-def detect_pattern(df, pattern_name=None):
+def detect_pattern(df, pattern_name=None, symbol=None):
     """Detect Hammer/Star and Engulfing patterns for entry signals.
     
     Returns: 1 (bullish), -1 (bearish), or 0 (none)
     """
+    check_symbol = symbol or "XAUUSD"
     entry_mode = config.get_symbol_param(
-        "XAUUSD", "ENTRY_MODE", config.ENTRY_MODE
+        check_symbol, "ENTRY_MODE", config.ENTRY_MODE
     )
     
     if entry_mode != "pattern":
