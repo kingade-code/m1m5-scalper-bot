@@ -70,9 +70,9 @@ def check_trend_filter(df, direction, symbol=None):
     uptrend = fast_now > slow_now
     downtrend = fast_now < slow_now
 
-    if direction == "bullish" and uptrend and current_price > fast_now:
+    if direction == "bullish" and uptrend:
         return True
-    if direction == "bearish" and downtrend and current_price < fast_now:
+    if direction == "bearish" and downtrend:
         return True
 
     return False
