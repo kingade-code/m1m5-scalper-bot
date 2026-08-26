@@ -53,7 +53,7 @@ def check_trend_filter(df, direction, symbol=None):
     import mt5_connector as mt5c
 
     ema_period = config.get_symbol_param(symbol, "TREND_EMA_PERIOD", config.TREND_EMA_PERIOD)
-    h1_df = mt5c.get_ohlc(symbol, 5, ema_period + 50)  # M5 timeframe
+    h1_df = mt5c.get_ohlc(symbol, 1, ema_period + 50)  # M1 timeframe
     if h1_df is None or len(h1_df) < ema_period + 10:
         return True
 
