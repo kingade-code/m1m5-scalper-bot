@@ -20,26 +20,47 @@ import login_setup
 import license_manager
 
 # ─── Single Instance Lock ──────────────────────────────────────────
+import subprocess
+
 LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.lock")
 
+def _is_process_alive(pid):
+    """Check if a process is alive (Windows-compatible)."""
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+            capture_output=True, text=True, timeout=5
+        )
+        return str(pid) in result.stdout
+    except Exception:
+        return False
+
 def _acquire_lock():
-    """Ensure only one bot instance runs. Kill stale locks if process is dead."""
+    """Ensure only one bot instance runs. Kill stale locks if process is dead.
+    Also kills orphaned pythonw.exe processes that may be leftover."""
+    # Kill any orphaned pythonw.exe (leftover from crashed instances)
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "pythonw.exe"],
+            capture_output=True, timeout=5
+        )
+    except Exception:
+        pass
+
     if os.path.exists(LOCK_FILE):
         try:
             with open(LOCK_FILE, "r") as f:
                 old_pid = int(f.read().strip())
-            # Check if that process is still alive
-            os.kill(old_pid, 0)
-            # Process exists — another instance is running
-            print(f"Another bot instance is running (PID {old_pid}). Exiting.")
-            return False
-        except (ProcessLookupError, ValueError):
-            # Stale lock — previous process died
+            if _is_process_alive(old_pid):
+                print(f"Another bot instance is running (PID {old_pid}). Exiting.")
+                return False
+        except (ValueError, OSError):
+            pass
+        # Stale lock or error — remove it
+        try:
             os.remove(LOCK_FILE)
-        except PermissionError:
-            # Can't check, assume alive
-            print(f"Another bot instance may be running. Exiting.")
-            return False
+        except OSError:
+            pass
     with open(LOCK_FILE, "w") as f:
         f.write(str(os.getpid()))
     return True
