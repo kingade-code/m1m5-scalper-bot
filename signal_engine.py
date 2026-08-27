@@ -77,19 +77,22 @@ def _analyze_pattern(symbol, timeframe):
     spread = config.get_symbol_param(symbol, "SPREAD", 0)
     spread_price = spread * 0.10
 
+    # 5 pip buffer above/below wick for SL
+    pip_buffer = config.get_symbol_param(symbol, "SL_PIP_BUFFER", 0.5)
+
     # SL calculation
     sl_method = config.get_symbol_param(symbol, "SL_METHOD", "wick")
     if sl_method == "current_bar":
         if direction == "bullish":
-            swing_sl = df.iloc[-1]["low"] + spread_price
+            swing_sl = df.iloc[-1]["low"] - pip_buffer
         else:
-            swing_sl = df.iloc[-1]["high"] - spread_price
+            swing_sl = df.iloc[-1]["high"] + pip_buffer
     else:
-        # Wick SL (prev bar low/high)
+        # Wick SL (prev bar low/high) + 5 pip buffer
         if direction == "bullish":
-            swing_sl = prev_bar["low"] + spread_price
+            swing_sl = prev_bar["low"] - pip_buffer
         else:
-            swing_sl = prev_bar["high"] - spread_price
+            swing_sl = prev_bar["high"] + pip_buffer
     sl_dist = abs(current_price - swing_sl)
     min_stop = config.get_symbol_param(symbol, "MIN_STOP_DISTANCE", config.MIN_STOP_DISTANCE)
     max_stop = config.get_symbol_param(symbol, "MAX_SL_DISTANCE", 0)
@@ -202,21 +205,24 @@ def _analyze_fibonacci(symbol, timeframe):
 
     # Spread in price (0.3 pip = 0.03 for XAUUSD)
     spread = config.get_symbol_param(symbol, "SPREAD", 0)
-    spread_price = spread * 0.10  # Convert pips to price
+    spread_price = spread * 0.10
+
+    # 5 pip buffer above/below wick for SL
+    pip_buffer = config.get_symbol_param(symbol, "SL_PIP_BUFFER", 0.5)
 
     # SL calculation
     sl_method = config.get_symbol_param(symbol, "SL_METHOD", "wick")
     if sl_method == "current_bar":
         if direction == "bullish":
-            swing_sl = df.iloc[-1]["low"] + spread_price
+            swing_sl = df.iloc[-1]["low"] - pip_buffer
         else:
-            swing_sl = df.iloc[-1]["high"] - spread_price
+            swing_sl = df.iloc[-1]["high"] + pip_buffer
     else:
-        # Wick SL (prev bar low/high)
+        # Wick SL (prev bar low/high) + 5 pip buffer
         if direction == "bullish":
-            swing_sl = prev_bar["low"] + spread_price
+            swing_sl = prev_bar["low"] - pip_buffer
         else:
-            swing_sl = prev_bar["high"] - spread_price
+            swing_sl = prev_bar["high"] + pip_buffer
 
     # Skip if SL distance too small for broker minimum
     sl_dist = abs(prev_close - swing_sl)

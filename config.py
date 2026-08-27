@@ -48,6 +48,7 @@ SYMBOL_OVERRIDES = {
         "SPREAD": 0.3,
         "RR_RATIO": 4.0,
         "MIN_STOP_DISTANCE": 1.0,
+        "SL_PIP_BUFFER": 0.5,  # 5 pips above/below wick
     },
     "GBPUSD": {
         "TIMEFRAMES": [mt5.TIMEFRAME_M1, mt5.TIMEFRAME_M5],
@@ -59,6 +60,7 @@ SYMBOL_OVERRIDES = {
         "RR_RATIO": 4.0,
         "MIN_STOP_DISTANCE": 0.0005,
         "MAX_SL_DISTANCE": 0.005,
+        "SL_PIP_BUFFER": 0.0005,  # 5 pips
     },
     "AUDUSD": {
         "TIMEFRAMES": [mt5.TIMEFRAME_M1, mt5.TIMEFRAME_M5],
@@ -70,6 +72,7 @@ SYMBOL_OVERRIDES = {
         "RR_RATIO": 4.0,
         "MIN_STOP_DISTANCE": 0.0005,
         "MAX_SL_DISTANCE": 0.005,
+        "SL_PIP_BUFFER": 0.0005,  # 5 pips
     },
 }
 
