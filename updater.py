@@ -6,13 +6,29 @@ import json
 import hashlib
 import logging
 import shutil
+import subprocess
 import requests
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 GITHUB_REPO = "kingade-code/m1m5-scalper-bot"
-GITHUB_TOKEN = "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"
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+
+
+def _get_auth_token():
+    """Resolve GitHub token: env var first, then gh CLI."""
+    if GITHUB_TOKEN:
+        return GITHUB_TOKEN
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "token"], capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return ""
 
 
 def _parse_version(v):
@@ -37,8 +53,9 @@ def get_local_version():
 def get_remote_version():
     try:
         headers = {}
-        if GITHUB_TOKEN and GITHUB_TOKEN != "ghp_":
-            headers["Authorization"] = f"token {GITHUB_TOKEN}"
+        token = _get_auth_token()
+        if token:
+            headers["Authorization"] = f"token {token}"
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/version.json"
         resp = requests.get(url, headers=headers, timeout=15)
         if resp.status_code == 200:
@@ -62,8 +79,9 @@ def file_hash(filepath):
 def download_file(url, dest):
     try:
         headers = {}
-        if GITHUB_TOKEN and GITHUB_TOKEN != "ghp_":
-            headers["Authorization"] = f"token {GITHUB_TOKEN}"
+        token = _get_auth_token()
+        if token:
+            headers["Authorization"] = f"token {token}"
         resp = requests.get(url, headers=headers, timeout=30)
         if resp.status_code == 200:
             import base64

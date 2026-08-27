@@ -73,10 +73,6 @@ def _analyze_pattern(symbol, timeframe):
     atr_series = filters.calc_atr(df["high"], df["low"], df["close"], config.ATR_PERIOD)
     current_atr = atr_series.iloc[-2]
 
-    # Spread in price (0.3 pip = 0.03 for XAUUSD)
-    spread = config.get_symbol_param(symbol, "SPREAD", 0)
-    spread_price = spread * 0.10
-
     # 5 pip buffer above/below wick for SL
     pip_buffer = config.get_symbol_param(symbol, "SL_PIP_BUFFER", 0.5)
 
@@ -202,10 +198,6 @@ def _analyze_fibonacci(symbol, timeframe):
     # ATR for SL/TP calculation
     atr_series = filters.calc_atr(df["high"], df["low"], df["close"], config.ATR_PERIOD)
     current_atr = atr_series.iloc[-2]
-
-    # Spread in price (0.3 pip = 0.03 for XAUUSD)
-    spread = config.get_symbol_param(symbol, "SPREAD", 0)
-    spread_price = spread * 0.10
 
     # 5 pip buffer above/below wick for SL
     pip_buffer = config.get_symbol_param(symbol, "SL_PIP_BUFFER", 0.5)

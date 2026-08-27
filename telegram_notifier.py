@@ -10,8 +10,7 @@ import os
 import uuid
 import urllib.request
 import logging
-import time
-from datetime import datetime, date
+from datetime import datetime
 import config
 
 logger = logging.getLogger(__name__)
@@ -19,45 +18,8 @@ logger = logging.getLogger(__name__)
 _boundary = uuid.uuid4().hex
 
 # Rate limiting for group signals
-_last_signal_time = 0
-_daily_trade_count = 0
-_daily_trade_date = None
 SIGNAL_COOLDOWN_SECONDS = 20 * 60  # 20 minutes
 MAX_DAILY_TRADES = 10
-
-
-def _can_send_signal():
-    """Check if we can send a signal to the group (rate limits)."""
-    global _last_signal_time, _daily_trade_count, _daily_trade_date
-
-    now = time.time()
-    today = date.today()
-
-    # Reset daily counter if new day
-    if _daily_trade_date != today:
-        _daily_trade_date = today
-        _daily_trade_count = 0
-
-    # Check daily limit
-    if _daily_trade_count >= MAX_DAILY_TRADES:
-        logger.info(f"Daily trade limit reached ({MAX_DAILY_TRADES}), skipping group signal")
-        return False
-
-    # Check cooldown
-    elapsed = now - _last_signal_time
-    if elapsed < SIGNAL_COOLDOWN_SECONDS:
-        remaining = int((SIGNAL_COOLDOWN_SECONDS - elapsed) / 60)
-        logger.info(f"Signal cooldown active ({remaining}min remaining), skipping group signal")
-        return False
-
-    return True
-
-
-def _record_signal_sent():
-    """Record that a signal was sent to the group."""
-    global _last_signal_time, _daily_trade_count
-    _last_signal_time = time.time()
-    _daily_trade_count += 1
 
 
 def send_message(text, parse_mode="HTML"):
@@ -90,9 +52,6 @@ def send_message(text, parse_mode="HTML"):
 def send_signal_to_group(text, parse_mode="HTML"):
     """Send trade signal to the FREE SIGNALS topic in KINGADE FOREX group."""
     if not config.TELEGRAM_ENABLED:
-        return False
-
-    if not _can_send_signal():
         return False
 
     # Group signals temporarily disabled
@@ -268,4 +227,4 @@ def notify_sl_trail(symbol, ticket, direction, old_sl, new_sl, current_price, pr
         f"<b>Locked Profit:</b> {locked_profit:.2f} pts\n"
         f"<b>Unrealized P/L:</b> ${profit:+.2f}"
     )
-    return send_signal_to_group(text)
+    return send_message(text)

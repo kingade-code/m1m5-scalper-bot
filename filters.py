@@ -38,9 +38,9 @@ def calc_atr(high, low, close, period=14):
 def check_trend_filter(df, direction, symbol=None):
     """Check if trade direction aligns with MA trend filter.
 
-    Fast MA(20) vs Slow MA(200):
-    - Uptrend: fast MA > slow MA AND price > fast MA => allow buys
-    - Downtrend: fast MA < slow MA AND price < fast MA => allow sells
+    Fast EMA(10) vs Slow EMA(100) on M1:
+    - Uptrend: fast EMA > slow EMA => allow buys
+    - Downtrend: fast EMA < slow EMA => allow sells
 
     Returns True if direction aligns with trend, False otherwise.
     """
@@ -56,16 +56,15 @@ def check_trend_filter(df, direction, symbol=None):
     slow_period = 100
     need_bars = slow_period + 50
 
-    h1_df = mt5c.get_ohlc(symbol, 1, need_bars)  # M1 timeframe
-    if h1_df is None or len(h1_df) < slow_period + 10:
+    trend_df = mt5c.get_ohlc(symbol, 1, need_bars)  # M1 trend
+    if trend_df is None or len(trend_df) < slow_period + 10:
         return True
 
-    fast_ema = calc_ema(h1_df["close"], fast_period)
-    slow_ema = calc_ema(h1_df["close"], slow_period)
+    fast_ema = calc_ema(trend_df["close"], fast_period)
+    slow_ema = calc_ema(trend_df["close"], slow_period)
 
     fast_now = fast_ema.iloc[-1]
     slow_now = slow_ema.iloc[-1]
-    current_price = h1_df.iloc[-1]["close"]
 
     uptrend = fast_now > slow_now
     downtrend = fast_now < slow_now
