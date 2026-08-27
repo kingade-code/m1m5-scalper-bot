@@ -16,9 +16,9 @@ INITIAL_BALANCE = 500.0
 RISK_PER_TRADE = config.RISK_PERCENT  # 4%
 MAX_LOT = config.MAX_LOT  # 0.10
 MAX_RISK_DOLLARS = config.MAX_RISK_PER_TRADE  # $20
-BACKTEST_SYMBOLS = ["XAUUSD", "GBPUSD", "AUDUSD"]
+BACKTEST_SYMBOLS = ["XAUUSD"]
 BACKTEST_TIMEFRAMES = [mt5.TIMEFRAME_M1]
-BACKTEST_MONTHS = 2  # ~60 days
+BACKTEST_MONTHS = 3  # ~3 weeks
 MT5_CHUNK_SIZE = 60000
 
 # Trend filter TF
@@ -29,7 +29,7 @@ TRAIL_START_ATR = config.TRAILING_START_ATR  # 0.3
 TRAIL_STEP_ATR = config.TRAILING_STEP_ATR    # 0.1
 USE_TRAILING = config.USE_TRAILING_STOP
 MAX_BARS = config.MAX_BARS_IN_TRADE  # 15
-RR_RATIO = 2.5
+RR_RATIO = 4.0
 SPREAD = config.get_symbol_param("XAUUSD", "SPREAD", 0)  # 0.3
 
 
@@ -405,6 +405,8 @@ def _compile_results(all_trades, equity_points, final_balance):
 
     sym_stats = {}
     monthly = {}
+    weekly = {}
+    daily = {}
     for t in closed:
         if t.symbol not in sym_stats:
             sym_stats[t.symbol] = {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
@@ -416,7 +418,31 @@ def _compile_results(all_trades, equity_points, final_balance):
         sym_stats[t.symbol]["pnl"] += t.profit
 
         mk = t.entry_time.strftime("%Y-%m")
-        monthly[mk] = monthly.get(mk, 0.0) + t.profit
+        monthly[mk] = monthly.get(mk, {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0})
+        monthly[mk]["trades"] += 1
+        if t.result == "win":
+            monthly[mk]["wins"] += 1
+        else:
+            monthly[mk]["losses"] += 1
+        monthly[mk]["pnl"] += t.profit
+
+        wk = t.entry_time.strftime("%Y-W%W")
+        weekly[wk] = weekly.get(wk, {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0})
+        weekly[wk]["trades"] += 1
+        if t.result == "win":
+            weekly[wk]["wins"] += 1
+        else:
+            weekly[wk]["losses"] += 1
+        weekly[wk]["pnl"] += t.profit
+
+        dk = t.entry_time.strftime("%Y-%m-%d")
+        daily[dk] = daily.get(dk, {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0})
+        daily[dk]["trades"] += 1
+        if t.result == "win":
+            daily[dk]["wins"] += 1
+        else:
+            daily[dk]["losses"] += 1
+        daily[dk]["pnl"] += t.profit
 
     return {
         "trades": closed,
@@ -444,6 +470,8 @@ def _compile_results(all_trades, equity_points, final_balance):
         "avg_bars_held": avg_bars,
         "sym_stats": sym_stats,
         "monthly": monthly,
+        "weekly": weekly,
+        "daily": daily,
     }
 
 
@@ -496,13 +524,11 @@ def _print_results(r):
     print(f"\n  {'MONTHLY P/L':^{w-4}}")
     print(f"  {'-'*(w-4)}")
     cum = 0
-    for m, pnl in sorted(r["monthly"].items()):
+    for m, data in sorted(r["monthly"].items()):
+        pnl = data["pnl"]
         cum += pnl
         marker = "+++" if pnl > 0 else "---" if pnl < 0 else "==="
-        mx = max(abs(x) for x in r["monthly"].values()) if r["monthly"] else 1
-        bar_len = min(int(abs(pnl) / mx * 20), 20) if mx > 0 else 0
-        bar = ("+" * bar_len if pnl > 0 else "-" * bar_len) if bar_len > 0 else ""
-        print(f"  {m}  | ${pnl:>10,.2f} | Cum: ${cum:>12,.2f} | {marker} {bar}")
+        print(f"  {m}  | {data['trades']} trades | WR {data['wins']/data['trades']*100:.0f}% | ${pnl:>10,.2f} | Cum: ${cum:>12,.2f}")
 
     ec = r["equity_curve"]
     if len(ec) > 2:
@@ -631,17 +657,97 @@ if __name__ == "__main__":
             pdf.stat_row(sym, f"{s['trades']} trades | WR {wr:.1f}% | P/L ${s['pnl']:+,.2f}")
         pdf.ln(4)
 
-        # Monthly
-        pdf.section_title("MONTHLY P/L")
+        # Daily Breakdown
+        pdf.add_page()
+        pdf.section_title("DAILY BREAKDOWN")
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(30, 6, "Date", border=1, fill=True)
+        pdf.cell(20, 6, "Trades", border=1, fill=True, align="C")
+        pdf.cell(20, 6, "Wins", border=1, fill=True, align="C")
+        pdf.cell(20, 6, "Losses", border=1, fill=True, align="C")
+        pdf.cell(25, 6, "WR%", border=1, fill=True, align="C")
+        pdf.cell(35, 6, "P/L", border=1, fill=True, align="C")
+        pdf.cell(0, 6, "Cum P/L", border=1, fill=True, align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
         cum = 0
-        for m, pnl in sorted(r["monthly"].items()):
-            cum += pnl
-            pdf.stat_row(m, f"${pnl:+,.2f} (cum: ${cum:+,.2f})")
+        for dk in sorted(r["daily"].keys()):
+            d = r["daily"][dk]
+            cum += d["pnl"]
+            wr = (d["wins"] / d["trades"] * 100) if d["trades"] else 0
+            pdf.cell(30, 5, dk, border=1)
+            pdf.cell(20, 5, str(d["trades"]), border=1, align="C")
+            pdf.cell(20, 5, str(d["wins"]), border=1, align="C")
+            pdf.cell(20, 5, str(d["losses"]), border=1, align="C")
+            pdf.cell(25, 5, f"{wr:.0f}%", border=1, align="C")
+            pnl_color = (0, 150, 0) if d["pnl"] >= 0 else (200, 0, 0)
+            pdf.set_text_color(*pnl_color)
+            pdf.cell(35, 5, f"${d['pnl']:+,.2f}", border=1, align="C")
+            pdf.cell(0, 5, f"${cum:+,.2f}", border=1, align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
+        pdf.ln(4)
+
+        # Weekly Breakdown
+        pdf.section_title("WEEKLY BREAKDOWN")
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(30, 6, "Week", border=1, fill=True)
+        pdf.cell(20, 6, "Trades", border=1, fill=True, align="C")
+        pdf.cell(20, 6, "Wins", border=1, fill=True, align="C")
+        pdf.cell(20, 6, "Losses", border=1, fill=True, align="C")
+        pdf.cell(25, 6, "WR%", border=1, fill=True, align="C")
+        pdf.cell(35, 6, "P/L", border=1, fill=True, align="C")
+        pdf.cell(0, 6, "Cum P/L", border=1, fill=True, align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+        cum = 0
+        for wk in sorted(r["weekly"].keys()):
+            w = r["weekly"][wk]
+            cum += w["pnl"]
+            wr = (w["wins"] / w["trades"] * 100) if w["trades"] else 0
+            pdf.cell(30, 5, wk, border=1)
+            pdf.cell(20, 5, str(w["trades"]), border=1, align="C")
+            pdf.cell(20, 5, str(w["wins"]), border=1, align="C")
+            pdf.cell(20, 5, str(w["losses"]), border=1, align="C")
+            pdf.cell(25, 5, f"{wr:.0f}%", border=1, align="C")
+            pnl_color = (0, 150, 0) if w["pnl"] >= 0 else (200, 0, 0)
+            pdf.set_text_color(*pnl_color)
+            pdf.cell(35, 5, f"${w['pnl']:+,.2f}", border=1, align="C")
+            pdf.cell(0, 5, f"${cum:+,.2f}", border=1, align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
+        pdf.ln(4)
+
+        # Monthly Breakdown
+        pdf.section_title("MONTHLY BREAKDOWN")
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(30, 6, "Month", border=1, fill=True)
+        pdf.cell(20, 6, "Trades", border=1, fill=True, align="C")
+        pdf.cell(20, 6, "Wins", border=1, fill=True, align="C")
+        pdf.cell(20, 6, "Losses", border=1, fill=True, align="C")
+        pdf.cell(25, 6, "WR%", border=1, fill=True, align="C")
+        pdf.cell(35, 6, "P/L", border=1, fill=True, align="C")
+        pdf.cell(0, 6, "Cum P/L", border=1, fill=True, align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+        cum = 0
+        for mk in sorted(r["monthly"].keys()):
+            m = r["monthly"][mk]
+            cum += m["pnl"]
+            wr = (m["wins"] / m["trades"] * 100) if m["trades"] else 0
+            pdf.cell(30, 5, mk, border=1)
+            pdf.cell(20, 5, str(m["trades"]), border=1, align="C")
+            pdf.cell(20, 5, str(m["wins"]), border=1, align="C")
+            pdf.cell(20, 5, str(m["losses"]), border=1, align="C")
+            pdf.cell(25, 5, f"{wr:.0f}%", border=1, align="C")
+            pnl_color = (0, 150, 0) if m["pnl"] >= 0 else (200, 0, 0)
+            pdf.set_text_color(*pnl_color)
+            pdf.cell(35, 5, f"${m['pnl']:+,.2f}", border=1, align="C")
+            pdf.cell(0, 5, f"${cum:+,.2f}", border=1, align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
 
         # Save PDF
         pdf_path = r"C:\Users\kinga\Documents\My Site\backtest_report.pdf"
         pdf.output(pdf_path)
 
         # Send to Telegram
-        tg.send_document(pdf_path, caption="Kingade Scalper Bot - EMA(10)/EMA(100) Backtest Report")
+        tg.send_document(pdf_path, caption="Kingade Scalper Bot - 3 Week Backtest Report (EMA10/EMA100 | RR 1:4)")
         print(f"PDF sent to Telegram: {pdf_path}")
