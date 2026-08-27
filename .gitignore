@@ -20,3 +20,6 @@ mt5_credentials.json
 # OS
 Thumbs.db
 Desktop.ini
+
+bot.lock
+PAUSED
