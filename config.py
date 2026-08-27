@@ -40,7 +40,7 @@ SYMBOL_LIST = ["XAUUSD", "GBPUSD", "AUDUSD"]
 # Gold needs different settings due to wider ATR
 SYMBOL_OVERRIDES = {
     "XAUUSD": {
-        "TIMEFRAMES": [mt5.TIMEFRAME_M1],
+        "TIMEFRAMES": [mt5.TIMEFRAME_M1, mt5.TIMEFRAME_M5],
         "TRAILING_START_ATR": 0.3,
         "TRAILING_STEP_ATR": 0.1,
         "SWING_LOOKBACK": 40,
