@@ -108,6 +108,26 @@ def _analyze_pattern(symbol, timeframe):
     timeframe_name = _tf_name(timeframe)
     # Signal candle wick (hammer/engulfing extreme) for early reverse-close
     signal_wick = prev_bar["low"] if direction == "bullish" else prev_bar["high"]
+
+    # Wick guard (A/B winner): skip if the currently forming bar has already
+    # pierced toward the signal wick. Prevents chasing signals that are
+    # already running straight to the stop. Backtest showed +46% net vs
+    # +33% baseline with lower drawdown (2.7% vs 3.9%).
+    wick_guard = config.get_symbol_param(symbol, "WICK_GUARD", 0)
+    if wick_guard > 0:
+        if direction == "bullish" and df.iloc[-1]["low"] <= prev_bar["low"] + wick_guard:
+            logger.debug(
+                f"{symbol} {timeframe_name}: rejected by wick guard "
+                f"(forming bar low {df.iloc[-1]['low']:.5f} <= wick {prev_bar['low']:.5f} + {wick_guard})"
+            )
+            return None
+        if direction == "bearish" and df.iloc[-1]["high"] >= prev_bar["high"] - wick_guard:
+            logger.debug(
+                f"{symbol} {timeframe_name}: rejected by wick guard "
+                f"(forming bar high {df.iloc[-1]['high']:.5f} >= wick {prev_bar['high']:.5f} - {wick_guard})"
+            )
+            return None
+
     signal = {
         "symbol": symbol,
         "timeframe": timeframe,

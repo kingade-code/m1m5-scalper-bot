@@ -24,10 +24,16 @@ MT5_CHUNK_SIZE = 60000
 # Trend filter TF
 TREND_TF = mt5.TIMEFRAME_M1  # M1 trend for live
 
-# Trailing config
-TRAIL_START_ATR = config.TRAILING_START_ATR  # 0.3
-TRAIL_STEP_ATR = config.TRAILING_STEP_ATR    # 0.1
+# Trailing config (read live per-symbol override so backtest == live behavior)
+TRAIL_START_ATR = config.get_symbol_param("XAUUSD", "TRAILING_START_ATR", config.TRAILING_START_ATR)  # live: 0.3
+TRAIL_STEP_ATR = config.get_symbol_param("XAUUSD", "TRAILING_STEP_ATR", config.TRAILING_STEP_ATR)     # live: 0.1
 USE_TRAILING = config.USE_TRAILING_STOP
+
+# ─── A/B flags (overridden via CLI, see __main__) ─────────────────-
+WICK_GUARD = 0.0  # 0 = disabled; skip entry if forming bar pierced signal wick +/- this many price units
+ATR_GATE = 0.0    # 0 = disabled; skip entry if ATR(14) > this value
+SEND_REPORT = True  # set False with --no-report to skip PDF + Telegram
+RUN_LABEL = "baseline"
 MAX_BARS = config.MAX_BARS_IN_TRADE  # 15
 RR_RATIO = 4.0
 PIP_BUFFER = config.get_symbol_param("XAUUSD", "SL_PIP_BUFFER", 0.5)  # 5 pips
@@ -312,6 +318,21 @@ def run_backtest():
                 else:
                     swing_sl = signal_wick + PIP_BUFFER
 
+                # ─── A/B: Wick-pierce guard ────────────────────────────
+                # Skip if the forming (current) bar already moved against
+                # the signal toward the wick/SL before entry.
+                if WICK_GUARD > 0:
+                    if direction == "bullish" and current_bar["low"] <= signal_wick + WICK_GUARD:
+                        continue
+                    if direction == "bearish" and current_bar["high"] >= signal_wick - WICK_GUARD:
+                        continue
+
+                # ─── A/B: ATR volatility gate ──────────────────────────
+                # Skip entries taken into high-volatility states that tend
+                # to run straight to the stop.
+                if ATR_GATE > 0 and current_atr > ATR_GATE:
+                    continue
+
                 sl_dist = abs(prev_close - swing_sl)
                 if sl_dist < config.MIN_STOP_DISTANCE:
                     continue
@@ -585,11 +606,35 @@ def _print_results(r):
 
 
 if __name__ == "__main__":
+    import argparse
+
+    p = argparse.ArgumentParser(description="Kingade backtest (A/B variant runner)")
+    p.add_argument("--trail-start", type=float, default=None, help="override TRAIL_START_ATR")
+    p.add_argument("--trail-step", type=float, default=None, help="override TRAIL_STEP_ATR")
+    p.add_argument("--wick-guard", type=float, default=None, help="None=config; skip if forming bar pierced signal wick")
+    p.add_argument("--atr-gate", type=float, default=None, help="None=config; skip if ATR(14) > value")
+    p.add_argument("--label", default="", help="variant label for report")
+    p.add_argument("--no-report", action="store_true", help="skip PDF + Telegram send")
+    args = p.parse_args()
+
+    if args.trail_start is not None:
+        TRAIL_START_ATR = args.trail_start
+    if args.trail_step is not None:
+        TRAIL_STEP_ATR = args.trail_step
+    WICK_GUARD = args.wick_guard if args.wick_guard is not None else config.get_symbol_param("XAUUSD", "WICK_GUARD", 0.0)
+    ATR_GATE = args.atr_gate if args.atr_gate is not None else config.get_symbol_param("XAUUSD", "ATR_GATE", 0.0)
+    RUN_LABEL = args.label
+    SEND_REPORT = not args.no_report
+
+    print(f"A/B variant: {RUN_LABEL or 'baseline'}"
+          f" | trail {TRAIL_START_ATR}/{TRAIL_STEP_ATR}"
+          f" | wick-guard {WICK_GUARD} | atr-gate {ATR_GATE}")
+
     result = run_backtest()
     mt5.shutdown()
 
     # Generate PDF report
-    if result:
+    if result and SEND_REPORT:
         from fpdf import FPDF
         import telegram_notifier as tg
         from datetime import datetime
@@ -638,6 +683,13 @@ if __name__ == "__main__":
         pdf = PDF()
         pdf.set_auto_page_break(auto=True, margin=20)
         pdf.add_page()
+
+        # A/B variant label
+        if RUN_LABEL not in ("", "baseline"):
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.set_text_color(0, 0, 0)
+            pdf.cell(0, 8, f"Variant: {RUN_LABEL}", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(2)
 
         # Account Summary
         pdf.section_title("ACCOUNT SUMMARY")

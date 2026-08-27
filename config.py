@@ -50,6 +50,7 @@ SYMBOL_OVERRIDES = {
         "MIN_STOP_DISTANCE": 1.0,
         "SL_PIP_BUFFER": 0.5,  # 5 pips above/below wick
         "REVERSE_CLOSE_DISTANCE": 0.2,  # 2 pips from signal wick
+        "WICK_GUARD": 0.3,  # 3 pips; skip entry if forming bar already pierced signal wick
     },
 }
 
