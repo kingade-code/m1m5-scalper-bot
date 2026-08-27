@@ -108,6 +108,8 @@ def execute_signal(signal):
         return False
 
     comment = f"kingade_{signal['timeframe_name']}"
+    if signal.get("signal_wick") is not None:
+        comment += f"|w={signal['signal_wick']:.3f}"
 
     result = mt5c.send_market_order(
         symbol=symbol,
@@ -125,7 +127,7 @@ def execute_signal(signal):
 
 
 def manage_open_positions():
-    """Manage open positions: trailing stop + max bars exit."""
+    """Manage open positions: reverse-close + trailing stop + max bars exit."""
     positions = mt5c.get_positions_by_magic()
     for pos in positions:
         ticket = pos.ticket
@@ -142,6 +144,10 @@ def manage_open_positions():
             continue
 
         current_price = tick.bid if pos.type == mt5.ORDER_TYPE_BUY else tick.ask
+
+        # Close early if price reverses toward SL and reaches the signal wick
+        if _manage_reverse_close(pos, current_price):
+            continue
 
         # Calculate trailing stop
         if config.USE_TRAILING_STOP:
@@ -220,6 +226,64 @@ def _manage_trailing_stop(pos, current_price, atr):
             logger.debug(f"Trailing stop update failed for #{ticket}: {result}")
 
 
+def _manage_reverse_close(pos, current_price):
+    """Close trade early if price reverses toward SL and reaches the
+    wick of the hammer/engulfing signal candle.
+
+    The wick is read from the order comment (kingade_M1|w=<price>).
+    Only fires when price has already moved against the entry (i.e. the
+    market reversed) AND is within REVERSE_CLOSE_DISTANCE of the wick.
+    Returns True if the position was closed.
+    """
+    if not config.USE_REVERSE_CLOSE:
+        return False
+
+    symbol = pos.symbol
+    direction = "buy" if pos.type == mt5.ORDER_TYPE_BUY else "sell"
+
+    wick = _signal_wick_from_comment(pos.comment)
+    if wick is None:
+        return False
+
+    rc_dist = config.get_symbol_param(
+        symbol, "REVERSE_CLOSE_DISTANCE", config.REVERSE_CLOSE_DISTANCE
+    )
+
+    trigger = False
+    if direction == "buy":
+        # Price dropped toward SL and got close to the bullish wick (low)
+        if current_price < pos.price_open and current_price <= wick + rc_dist:
+            trigger = True
+    else:
+        # Price rose toward SL and got close to the bearish wick (high)
+        if current_price > pos.price_open and current_price >= wick - rc_dist:
+            trigger = True
+
+    if not trigger:
+        return False
+
+    profit = pos.profit
+    logger.info(
+        f"REVERSE CLOSE | {symbol} #{pos.ticket} | "
+        f"Price {current_price:.5f} near signal wick {wick:.5f} | "
+        f"Profit (unrealized): {profit:.2f}"
+    )
+    mt5c.close_position(pos.ticket)
+    tg.notify_trade_closed(pos, profit)
+    _bar_counts.pop(str(pos.ticket), None)
+    return True
+
+
+def _signal_wick_from_comment(comment):
+    """Extract signal candle wick from order comment (kingade_TF|w=...)."""
+    if not comment or "|w=" not in comment:
+        return None
+    try:
+        return float(comment.split("|w=", 1)[1])
+    except ValueError:
+        return None
+
+
 def _manage_max_bars(pos):
     """Force close position if held for more than MAX_BARS_IN_TRADE bars."""
     ticket = pos.ticket
@@ -255,5 +319,5 @@ def _manage_max_bars(pos):
 def _tf_from_comment(comment):
     """Extract timeframe string from order comment."""
     if comment.startswith("kingade_"):
-        return comment[8:]
+        return comment[8:].split("|", 1)[0]
     return ""

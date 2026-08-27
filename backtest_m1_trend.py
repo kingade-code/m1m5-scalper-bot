@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kingade Forex. All rights reserved.
-"""Backtest matching live bot config: M1 pattern + M1 EMA50 trend + wick SL + trailing + 1:2.5 RR"""
+"""Backtest matching live bot config: M1 pattern + M1 EMA10/100 trend + wick SL + reverse close + trailing + 1:4.0 RR"""
 import sys
 import MetaTrader5 as mt5
 import pandas as pd
@@ -30,7 +30,9 @@ TRAIL_STEP_ATR = config.TRAILING_STEP_ATR    # 0.1
 USE_TRAILING = config.USE_TRAILING_STOP
 MAX_BARS = config.MAX_BARS_IN_TRADE  # 15
 RR_RATIO = 4.0
-SPREAD = config.get_symbol_param("XAUUSD", "SPREAD", 0)  # 0.3
+PIP_BUFFER = config.get_symbol_param("XAUUSD", "SL_PIP_BUFFER", 0.5)  # 5 pips
+USE_REVERSE_CLOSE = config.USE_REVERSE_CLOSE
+REVERSE_CLOSE_DISTANCE = config.get_symbol_param("XAUUSD", "REVERSE_CLOSE_DISTANCE", 0.2)
 
 
 @dataclass
@@ -49,6 +51,7 @@ class Trade:
     result: str = "open"
     bars_held: int = 0
     trailing_sl: Optional[float] = None
+    signal_wick: Optional[float] = None
 
 
 def mt5_init():
@@ -116,8 +119,26 @@ def _get_effective_sl(trade):
         return min(trade.sl, trade.trailing_sl)
 
 
+def _reverse_close_triggered(trade, bar):
+    """True if price reversed toward SL and reached the signal wick."""
+    if not USE_REVERSE_CLOSE or trade.signal_wick is None:
+        return False
+    if trade.direction == "buy":
+        return (
+            bar["close"] < trade.entry_price
+            and bar["low"] <= trade.signal_wick + REVERSE_CLOSE_DISTANCE
+        )
+    else:
+        return (
+            bar["close"] > trade.entry_price
+            and bar["high"] >= trade.signal_wick - REVERSE_CLOSE_DISTANCE
+        )
+
+
 def _check_exit(trade, bar):
     eff_sl = _get_effective_sl(trade)
+    if _reverse_close_triggered(trade, bar):
+        return True
     if trade.direction == "buy":
         if bar["low"] <= eff_sl:
             return True
@@ -133,7 +154,9 @@ def _check_exit(trade, bar):
 
 def _close_trade(trade, bar, tick_value, tick_size):
     eff_sl = _get_effective_sl(trade)
-    if trade.direction == "buy":
+    if _reverse_close_triggered(trade, bar):
+        trade.exit_price = bar["close"]
+    elif trade.direction == "buy":
         if bar["low"] <= eff_sl:
             trade.exit_price = eff_sl
         elif bar["high"] >= trade.tp1:
@@ -282,18 +305,18 @@ def run_backtest():
                         if direction == "bearish" and not (downtrend and t_price < f_val):
                             continue
 
-                # ─── Wick SL (prev bar low/high) + spread ────────────
-                spread_price = SPREAD * 0.10  # 0.3 pip -> price
+                # ─── Wick SL (prev bar low/high) - 5 pip buffer ───────
+                signal_wick = prev_bar["low"] if direction == "bullish" else prev_bar["high"]
                 if direction == "bullish":
-                    swing_sl = prev_bar["low"] + spread_price
+                    swing_sl = signal_wick - PIP_BUFFER
                 else:
-                    swing_sl = prev_bar["high"] - spread_price
+                    swing_sl = signal_wick + PIP_BUFFER
 
                 sl_dist = abs(prev_close - swing_sl)
                 if sl_dist < config.MIN_STOP_DISTANCE:
                     continue
 
-                # ─── TP: 1:2.5 RR ───────────────────────────────────
+                # ─── TP: 1:4.0 RR ───────────────────────────────────
                 tp_dist = sl_dist * RR_RATIO
                 if direction == "bullish":
                     atr_tp = prev_close + tp_dist
@@ -317,6 +340,7 @@ def run_backtest():
                     tp1=atr_tp,
                     entry_time=current_time,
                     lot_size=lot_size,
+                    signal_wick=signal_wick,
                 )
                 open_trades.append(trade)
                 all_trades.append(trade)
@@ -479,7 +503,7 @@ def _print_results(r):
     w = 64
     print(f"\n\n{'='*w}")
     print(f"{'KINGADE M1-M5 SCALPER - BACKTEST RESULTS':^{w}}")
-    print(f"{'Config: M1 Pattern + M1 Trend + Wick SL + Trail + 1:2.5 RR':^{w}}")
+    print(f"{'Config: M1 Pattern + M1 Trend + Wick SL + Reverse Close + Trail + 1:4.0 RR':^{w}}")
     print(f"{'='*w}")
 
     print(f"\n  {'ACCOUNT SUMMARY':^{w-4}}")
@@ -580,7 +604,7 @@ if __name__ == "__main__":
                 self.set_font("Helvetica", "", 10)
                 self.set_text_color(100, 100, 100)
                 self.cell(0, 6, "Backtest Performance Report", new_x="LMARGIN", new_y="NEXT", align="C")
-                self.cell(0, 5, "EMA(10)/EMA(100) Trend | M1 Pattern | Wick SL | Trail | 1:2.5 RR", new_x="LMARGIN", new_y="NEXT", align="C")
+                self.cell(0, 5, "EMA(10)/EMA(100) Trend | M1 Pattern | Wick SL | Reverse Close | 1:4.0 RR", new_x="LMARGIN", new_y="NEXT", align="C")
                 self.cell(0, 5, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT", align="C")
                 self.ln(2)
                 self.set_draw_color(255, 140, 0)

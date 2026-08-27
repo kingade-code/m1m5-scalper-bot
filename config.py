@@ -49,6 +49,7 @@ SYMBOL_OVERRIDES = {
         "RR_RATIO": 4.0,
         "MIN_STOP_DISTANCE": 1.0,
         "SL_PIP_BUFFER": 0.5,  # 5 pips above/below wick
+        "REVERSE_CLOSE_DISTANCE": 0.2,  # 2 pips from signal wick
     },
 }
 
@@ -89,6 +90,15 @@ MIN_STOP_DISTANCE = 1.0
 USE_TRAILING_STOP = True
 TRAILING_START_ATR = 1.0
 TRAILING_STEP_ATR = 0.12
+
+# ─── Reverse Close (Failed Setup Exit) ─────────────────────────────
+# If price reverses toward the SL and reaches the wick of the
+# hammer/engulfing signal candle (within REVERSE_CLOSE_DISTANCE),
+# close the trade early instead of waiting for the SL to be hit.
+# NOTE: A/B backtest showed this reduces returns (+5.2% vs +35.5%
+# without it), so it is disabled by default. Re-enable with caution.
+USE_REVERSE_CLOSE = False
+REVERSE_CLOSE_DISTANCE = 0.2  # 2 pips from signal wick (0.1 = 1 pip on gold)
 
 # ─── Max Bars in Trade ────────────────────────────────────────────
 MAX_BARS_IN_TRADE = 15

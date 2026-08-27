@@ -106,6 +106,8 @@ def _analyze_pattern(symbol, timeframe):
         atr_tp = current_price - tp_dist
 
     timeframe_name = _tf_name(timeframe)
+    # Signal candle wick (hammer/engulfing extreme) for early reverse-close
+    signal_wick = prev_bar["low"] if direction == "bullish" else prev_bar["high"]
     signal = {
         "symbol": symbol,
         "timeframe": timeframe,
@@ -123,6 +125,7 @@ def _analyze_pattern(symbol, timeframe):
         "move_direction": direction,
         "atr": current_atr,
         "entry_mode": "pattern",
+        "signal_wick": signal_wick,
     }
 
     logger.info(
