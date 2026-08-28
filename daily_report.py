@@ -11,7 +11,7 @@ import os
 import logging
 import MetaTrader5 as mt5
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -46,9 +46,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_today_trades():
-    """Get all trades opened today from MT5 deal history."""
-    now = datetime.now()
-    today_start = datetime(now.year, now.month, now.day)
+    """Get all trades opened today from MT5 deal history.
+    MT5 timestamps are UTC, so the day window must be UTC-based."""
+    now = datetime.now(timezone.utc)
+    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
 
     from_ts = int(today_start.timestamp())
     to_ts = int(now.timestamp())
@@ -424,10 +425,11 @@ def generate_and_send_daily_report():
 
 # ─── Weekly Report ─────────────────────────────────────────────────
 def get_week_trades():
-    """Get all trades from Monday to Friday of the current week."""
-    now = datetime.now()
+    """Get all trades from Monday to Friday of the current week.
+    MT5 timestamps are UTC, so the week window must be UTC-based."""
+    now = datetime.now(timezone.utc)
     monday = now - timedelta(days=now.weekday())
-    monday_start = datetime(monday.year, monday.month, monday.day)
+    monday_start = datetime(monday.year, monday.month, monday.day, tzinfo=timezone.utc)
 
     from_ts = int(monday_start.timestamp())
     to_ts = int(now.timestamp())

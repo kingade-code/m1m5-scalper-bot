@@ -1,9 +1,0 @@
-Running backtest...
-MT5 connected | Account: 476188356 | Balance: 1157.22
-[1/6] XAUUSD M1... 12872 bars | 2026-08-12 -> 2026-08-25
-    Signals: 1834
-[2/6] XAUUSD M15... 12872 bars | 2026-02-09 -> 2026-08-25
-    Signals: 965
-[3/6] GBPUSD M1... 12872 bars | 2026-08-12 -> 2026-08-25
-    Signals: 2266
-[4/6] GBPUSD M15...

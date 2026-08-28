@@ -10,6 +10,13 @@ import signal
 import logging
 from datetime import datetime
 
+# Console/boot logs must be UTF-8: the SIGNAL CONFIRMED log contains emoji
+# (U+1F7E2/U+1F534) and would otherwise raise UnicodeEncodeError when
+# stdout/stderr is redirected to a cp1252 file (e.g. pythonw + boot log).
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 import config
 import mt5_connector as mt5c
 import signal_engine
@@ -37,16 +44,8 @@ def _is_process_alive(pid):
 
 def _acquire_lock():
     """Ensure only one bot instance runs. Kill stale locks if process is dead.
-    Also kills orphaned pythonw.exe processes that may be leftover."""
-    # Kill any orphaned pythonw.exe (leftover from crashed instances)
-    try:
-        subprocess.run(
-            ["taskkill", "/F", "/IM", "pythonw.exe"],
-            capture_output=True, timeout=5
-        )
-    except Exception:
-        pass
-
+    NOTE: must NOT taskkill pythonw.exe here — the bot is launched via
+    pythonw.exe by the auto-start batch files, so that would kill itself."""
     if os.path.exists(LOCK_FILE):
         try:
             with open(LOCK_FILE, "r") as f:
@@ -150,7 +149,7 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(config.LOG_FILE, mode="a"),
+        logging.FileHandler(config.LOG_FILE, mode="a", encoding="utf-8"),
     ],
 )
 logger = logging.getLogger("kingade_bot")
@@ -220,14 +219,14 @@ def _tf_name(timeframe):
 def _check_daily_report():
     """Send daily report after market close (22:00 UTC on weekdays)."""
     global _last_report_date
-    now = datetime.now()
+    now = datetime.utcnow()
     today = now.date()
 
     if _last_report_date == today:
         return
 
     # Send at 22:00 UTC (market close for XAUUSD) on weekdays
-    if now.weekday() < 5 and now.hour == 22 and now.minute >= 0:
+    if now.weekday() < 5 and now.hour == 22:
         try:
             daily_report.generate_and_send_daily_report()
             _last_report_date = today
@@ -240,14 +239,14 @@ def _check_daily_report():
 def _check_weekly_report():
     """Send weekly report on Friday after market close (22:00 UTC)."""
     global _last_weekly_report
-    now = datetime.now()
+    now = datetime.utcnow()
     today = now.date()
 
     if _last_weekly_report == today:
         return
 
     # Send on Friday at 22:00 UTC (market close)
-    if now.weekday() == 4 and now.hour == 22 and now.minute >= 0:
+    if now.weekday() == 4 and now.hour == 22:
         try:
             daily_report.generate_and_send_weekly_report()
             _last_weekly_report = today

@@ -207,7 +207,7 @@ def close_position(ticket):
         "price": price,
         "deviation": config.SLIPPAGE,
         "magic": config.MAGIC_NUMBER,
-        "comment": "fib_close",
+        "comment": "kingade_close",
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_FOK,
     }
