@@ -128,6 +128,28 @@ def _analyze_pattern(symbol, timeframe):
             )
             return None
 
+    # A/B: Range-edge gate (mean-reversion mode, M1 only).
+    # Require the M1 entry to sit within N*ATR of the current move's swing
+    # low (buys) / swing high (sells). A/B backtest: M1 +58.5% vs +28.7%
+    # baseline at width 1.0 with the EMA trend filter kept ON; M5 hurt, so
+    # this gate is applied to M1 exclusively. Set RANGE_EDGE_ATR=0 to disable.
+    range_edge = config.get_symbol_param(symbol, "RANGE_EDGE_ATR", 0)
+    if range_edge > 0 and timeframe == mt5.TIMEFRAME_M1:
+        closed = df.iloc[:-1]  # exclude the forming bar (no look-ahead)
+        lookback = config.get_symbol_param(symbol, "SWING_LOOKBACK", config.SWING_LOOKBACK)
+        move = swing_detector.detect_current_move(closed, lookback=lookback)
+        if move is None:
+            logger.debug(f"{symbol} M1: rejected by range-edge gate (no swing move)")
+            return None
+        edge = move["swing_low"][1] if direction == "bullish" else move["swing_high"][1]
+        if abs(prev_close - edge) > range_edge * current_atr:
+            logger.debug(
+                f"{symbol} M1: rejected by range-edge gate "
+                f"(close {prev_close:.5f} not within {range_edge}*ATR "
+                f"of {'swing low' if direction == 'bullish' else 'swing high'} {edge:.5f})"
+            )
+            return None
+
     signal = {
         "symbol": symbol,
         "timeframe": timeframe,

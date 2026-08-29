@@ -24,17 +24,25 @@ FIB_ENTRY_LOW = 0.5
 FIB_ENTRY_HIGH = 0.786
 
 # ─── Risk Management ─────────────────────────────────────────────
-RISK_PERCENT = 4.0
+RISK_PERCENT = 3.0
 MAX_RISK_PER_TRADE = 20.0  # Hard cap: max $20 risk per trade
-MAX_POSITIONS = 1
+MAX_POSITIONS = 2
 MAX_POSITIONS_PER_SYMBOL = 1
 MAX_LOT = 0.10  # Cap lot size to prevent risk blowup on tight SL
 MAGIC_NUMBER = 777777
 SLIPPAGE = 3
 
+# ─── Manual Trade Guard ──────────────────────────────────────────
+# Closes/cancels anything NOT placed by this bot or another controlled
+# EA. Manual MT5 terminal trades carry magic 0 here, so they get killed
+# on the next 5s scan. Other EAs using the same account can be exempted.
+MANUAL_TRADE_GUARD = True
+GUARD_EXEMPT_MAGICS = {730411}  # amt_order_flow_bot.py
+GUARD_DEBUG = False             # log-but-don't-close mode (testing only)
+
 # ─── Symbol Filter ────────────────────────────────────────────────
 AUTO_DISCOVER_SYMBOLS = False
-SYMBOL_LIST = ["XAUUSD"]
+SYMBOL_LIST = ["XAUUSD", "BTCUSD"]
 
 # ─── Per-Symbol Overrides ────────────────────────────────────────
 # Gold needs different settings due to wider ATR
@@ -51,6 +59,24 @@ SYMBOL_OVERRIDES = {
         "SL_PIP_BUFFER": 0.5,  # 5 pips above/below wick
         "REVERSE_CLOSE_DISTANCE": 0.2,  # 2 pips from signal wick
         "WICK_GUARD": 0.3,  # 3 pips; skip entry if forming bar already pierced signal wick
+        "RANGE_EDGE_ATR": 1.0,  # A/B-validated (3.4m: PF 7.8->11.6, maxDD 3.3%->1.1%); M1 only
+    },
+    # BTCUSD (backtest-ready; NOT in SYMBOL_LIST yet -> the live bot ignores
+    # it until it is added. Params calibrated to gold by ATR ratio:
+    # M1 ATR(14) ~34 vs gold ~1.7 => buffers x10 stress-tested, spread is a
+    # placeholder (weekend quote was $7; live hours are ~$0.5-1.5).
+    "BTCUSD": {
+        "TIMEFRAMES": [mt5.TIMEFRAME_M1, mt5.TIMEFRAME_M5],
+        "TRAILING_START_ATR": 0.3,
+        "TRAILING_STEP_ATR": 0.1,
+        "SWING_LOOKBACK": 40,
+        "ENTRY_MODE": "pattern",
+        "SPREAD": 1.0,
+        "RR_RATIO": 4.0,
+        "SL_PIP_BUFFER": 10.0,   # ~0.29 * M1 ATR (gold: 0.5/1.7)
+        "REVERSE_CLOSE_DISTANCE": 4.0,
+        "WICK_GUARD": 6.0,       # ~0.17 * M1 ATR
+        "RANGE_EDGE_ATR": 0.0,   # disabled for BTC first look
     },
 }
 
@@ -87,6 +113,14 @@ MIN_BODY_RATIO = 0.10
 ATR_PERIOD = 14
 MIN_STOP_DISTANCE = 1.0
 
+# ─── Range-Edge Gate (A/B, M1 mean-reversion fade) ─────────────────
+# Require an M1 pattern entry within RANGE_EDGE_ATR*ATR of the current
+# move's swing low (buys) / swing high (sells). A/B backtest on M1
+# showed +58.5% vs +28.7% baseline at 1.0 with the EMA trend filter ON;
+# it HURT on M5 (+26.3% vs +33.6%), so the gate is applied to M1 only.
+# 0 = disabled (backward compatible). Enable via SYMBOL_OVERRIDES.
+RANGE_EDGE_ATR = 0.0
+
 # ─── Trailing Stop ────────────────────────────────────────────────
 USE_TRAILING_STOP = True
 TRAILING_START_ATR = 1.0
@@ -101,8 +135,8 @@ TRAILING_STEP_ATR = 0.12
 USE_REVERSE_CLOSE = False
 REVERSE_CLOSE_DISTANCE = 0.2  # 2 pips from signal wick (0.1 = 1 pip on gold)
 
-# ─── Max Bars in Trade ────────────────────────────────────────────
-MAX_BARS_IN_TRADE = 15
+# ─── Max Bars in Trade (counted on the trade's own entry timeframe) ──
+MAX_BARS_IN_TRADE = 45
 
 # ─── Logging ──────────────────────────────────────────────────────
 LOG_LEVEL = "DEBUG"

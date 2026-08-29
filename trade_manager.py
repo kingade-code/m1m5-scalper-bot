@@ -4,6 +4,7 @@
 # A valid license key (KNG-XXXX-XXXX-XXXX) is required to run this bot.
 # Purchase at: https://sellix.io/kingadebot
 import logging
+import time
 import MetaTrader5 as mt5
 import mt5_connector as mt5c
 import filters
@@ -126,8 +127,78 @@ def execute_signal(signal):
     return result
 
 
+_guard_last_notify = 0.0
+GUARD_NOTIFY_INTERVAL = 60.0  # cap Telegram spam if user keeps placing trades
+
+
+def _guard_notify(closed, cancelled):
+    """Throttled Telegram notice about positions/orders the guard killed."""
+    global _guard_last_notify
+    now = time.monotonic()
+    if now - _guard_last_notify < GUARD_NOTIFY_INTERVAL:
+        return
+    _guard_last_notify = now
+    lines = []
+    for t, s, m, pr in closed:
+        lines.append(f"\u2022 closed #{t} {s} magic {m} pnl {pr:+.2f}")
+    for t, s, m in cancelled:
+        lines.append(f"\u2022 cancelled order #{t} {s} magic {m}")
+    try:
+        tg.send_message(
+            "<b>MANUAL TRADE GUARD</b>\nAny trade/order not placed by the "
+            "bot or its exempted EAs is closed immediately. Just now:\n"
+            + "\n".join(lines))
+    except Exception as e:
+        logger.error(f"GUARD notify failed: {e}")
+
+
+def _manage_manual_trades():
+    """Close/cancel ANY position or pending order whose magic is neither
+    this bot's nor an exempted EA's. Manual MT5 terminal trades have
+    magic 0, so they never survive a 5s scan cycle."""
+    exempt = {config.MAGIC_NUMBER} | set(config.GUARD_EXEMPT_MAGICS)
+    closed, cancelled = [], []
+    for p in mt5.positions_get() or []:
+        if p.magic in exempt:
+            continue
+        if config.GUARD_DEBUG:
+            logger.warning(f"GUARD[debug] WOULD close #{p.ticket} {p.symbol} "
+                           f"magic={p.magic} vol={p.volume} pnl={p.profit:.2f}")
+        else:
+            try:
+                mt5c.close_position(p.ticket)
+            except Exception as e:
+                logger.error(f"GUARD close failed #{p.ticket}: {e}")
+                continue
+            logger.warning(f"GUARD: closed manual position #{p.ticket} "
+                           f"{p.symbol} magic={p.magic} vol={p.volume} "
+                           f"pnl={p.profit:.2f}")
+            closed.append((p.ticket, p.symbol, p.magic, p.profit))
+    for o in mt5.orders_get() or []:
+        if o.magic in exempt:
+            continue
+        if config.GUARD_DEBUG:
+            logger.warning(f"GUARD[debug] WOULD cancel order #{o.ticket} "
+                           f"{o.symbol} magic={o.magic}")
+        else:
+            try:
+                res = mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE,
+                                      "order": o.ticket})
+            except Exception as e:
+                logger.error(f"GUARD cancel failed #{o.ticket}: {e}")
+                continue
+            if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                logger.warning(f"GUARD: cancelled order #{o.ticket} "
+                               f"{o.symbol} magic={o.magic}")
+                cancelled.append((o.ticket, o.symbol, o.magic))
+    if closed or cancelled:
+        _guard_notify(closed, cancelled)
+
+
 def manage_open_positions():
     """Manage open positions: reverse-close + trailing stop + max bars exit."""
+    if config.MANUAL_TRADE_GUARD:
+        _manage_manual_trades()
     positions = mt5c.get_positions_by_magic()
     for pos in positions:
         ticket = pos.ticket
@@ -285,10 +356,17 @@ def _signal_wick_from_comment(comment):
 
 
 def _manage_max_bars(pos):
-    """Force close position if held for more than MAX_BARS_IN_TRADE bars."""
+    """Force close position if held for more than MAX_BARS_IN_TRADE bars.
+
+    Bars are counted on the trade's own entry timeframe (parsed from the
+    order comment), matching the backtest's per-timeframe bar counting.
+    """
     ticket = pos.ticket
     symbol = pos.symbol
-    tf = config.TIMEFRAMES[0]
+
+    tf = _entry_timeframe(pos.comment)
+    if tf is None:
+        return
 
     key = f"{ticket}"
     if key not in _bar_counts:
@@ -307,7 +385,7 @@ def _manage_max_bars(pos):
 
     if _bar_counts[key] >= config.MAX_BARS_IN_TRADE:
         logger.info(
-            f"MAX BARS EXIT | {symbol} #{ticket} | "
+            f"MAX BARS EXIT | {symbol} #{ticket} | {_tf_from_comment(pos.comment) or '?'} | "
             f"Held {_bar_counts[key]} bars (max: {config.MAX_BARS_IN_TRADE})"
         )
         profit = pos.profit
@@ -321,3 +399,16 @@ def _tf_from_comment(comment):
     if comment.startswith("kingade_"):
         return comment[8:].split("|", 1)[0]
     return ""
+
+
+def _entry_timeframe(comment):
+    """MT5 timeframe for a position's entry TF (from order comment).
+
+    Falls back to the first configured timeframe if the comment can't be
+    parsed, so max-bars tracking is never silently disabled.
+    """
+    tf_map = {"M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5}
+    name = _tf_from_comment(comment)
+    if name in tf_map:
+        return tf_map[name]
+    return config.TIMEFRAMES[0]

@@ -10,6 +10,7 @@ from typing import Optional
 import config
 import pattern_detector
 import filters
+import swing_detector
 
 # ─── Backtest Config ──────────────────────────────────────────────
 INITIAL_BALANCE = 500.0
@@ -21,8 +22,14 @@ BACKTEST_TIMEFRAMES = [mt5.TIMEFRAME_M1]
 BACKTEST_MONTHS = 3  # ~3 weeks
 MT5_CHUNK_SIZE = 60000
 
-# Trend filter TF
-TREND_TF = mt5.TIMEFRAME_M1  # M1 trend for live
+# Trend filter TF. "m1" = M1 EMAs (matches live check_trend_filter),
+# matching live exactly but limited to the M1 data depth. "own" = EMA on
+# the signal timeframe's own bars -- self-consistent for long windows.
+TREND_TF = mt5.TIMEFRAME_M1
+TREND_TF_MODE = "m1"  # "m1" | "own"
+
+# Live cooldown is 600 SECONDS (10 min) regardless of timeframe.
+TRADE_COOLDOWN_SECONDS = 600
 
 # Trailing config (read live per-symbol override so backtest == live behavior)
 TRAIL_START_ATR = config.get_symbol_param("XAUUSD", "TRAILING_START_ATR", config.TRAILING_START_ATR)  # live: 0.3
@@ -36,9 +43,33 @@ SEND_REPORT = True  # set False with --no-report to skip PDF + Telegram
 RUN_LABEL = "baseline"
 MAX_BARS = config.MAX_BARS_IN_TRADE  # 15
 RR_RATIO = 4.0
+# Breakeven-protect floor (default OFF): when a trade reaches
+# BE_PROTECT_AT_RR*SL distance of profit, the stop ratchets to
+# entry +/- BE_FLOOR (price units; 1 XAUUSD "pip" ~ 0.10), guaranteeing a
+# tiny winner while the rest runs toward the R:R target.
+USE_BE_PROTECT = 0  # 0 = disabled
+BE_PROTECT_AT_RR = 2.0
+BE_FLOOR = 0.20  # ~2 pips on XAUUSD
 PIP_BUFFER = config.get_symbol_param("XAUUSD", "SL_PIP_BUFFER", 0.5)  # 5 pips
 USE_REVERSE_CLOSE = config.USE_REVERSE_CLOSE
 REVERSE_CLOSE_DISTANCE = config.get_symbol_param("XAUUSD", "REVERSE_CLOSE_DISTANCE", 0.2)
+
+# A/B: Range-edge (mean-reversion mode) gate ────────────────────
+# RELAX_TREND=True  -> skip the EMA10/100 trend filter entirely.
+# RANGE_EDGE_ATR>0  -> require entry price within N*ATR of the current
+#                      move's swing LOW (buys) / swing HIGH (sells).
+# Together they turn the bot from trend-continuation into pure
+# fade-the-range-edge mean reversion.
+RELAX_TREND = False
+RANGE_EDGE_ATR = 0.0  # 0 = disabled
+RANGE_EDGE_LOOKBACK = None  # None => per-symbol SWING_LOOKBACK
+
+# Real-world cost per round trip, in price units (XAUUSD ~0.25-0.50).
+# Charged as a full-spread penalty on the trade's exit price.
+SPREAD_PRICE = 0.0  # 0 = idealized fills (backwards compatible)
+# Additional slippage on stop-loss exits (price skips through the level).
+# Combined realistic friction = SPREAD_PRICE + SLIP_PRICE on SL losers.
+SLIP_PRICE = 0.0
 
 
 @dataclass
@@ -116,6 +147,28 @@ def _update_trailing_stop(trade, bar, current_atr):
                 trade.trailing_sl = new_sl
 
 
+def _update_be_protect(trade, bar):
+    """Breakeven-protect floor: once profit >= BE_PROTECT_AT_RR * SL distance,
+    ratchet the stop to entry +/- BE_FLOOR (lock a small win)."""
+    if not USE_BE_PROTECT:
+        return
+    sl_distance = abs(trade.entry_price - trade.sl)
+    if sl_distance <= 0:
+        return
+    if trade.direction == "buy":
+        unrealized = bar["high"] - trade.entry_price
+        if unrealized >= BE_PROTECT_AT_RR * sl_distance:
+            floor = trade.entry_price + BE_FLOOR
+            if trade.trailing_sl is None or floor > trade.trailing_sl:
+                trade.trailing_sl = floor
+    else:
+        unrealized = trade.entry_price - bar["low"]
+        if unrealized >= BE_PROTECT_AT_RR * sl_distance:
+            floor = trade.entry_price - BE_FLOOR
+            if trade.trailing_sl is None or floor < trade.trailing_sl:
+                trade.trailing_sl = floor
+
+
 def _get_effective_sl(trade):
     if trade.trailing_sl is None:
         return trade.sl
@@ -123,6 +176,22 @@ def _get_effective_sl(trade):
         return max(trade.sl, trade.trailing_sl)
     else:
         return min(trade.sl, trade.trailing_sl)
+
+
+def _range_edge_ok(win, direction, price, atr):
+    """True when price sits within RANGE_EDGE_ATR*ATR of the current move's
+    swing extreme (the edge of the recent range). Closed bars only -- the
+    forming bar is excluded by the caller, so there is no look-ahead."""
+    if win is None or len(win) < 12:
+        return False
+    lookback = RANGE_EDGE_LOOKBACK or config.get_symbol_param(
+        "XAUUSD", "SWING_LOOKBACK", config.SWING_LOOKBACK
+    )
+    move = swing_detector.detect_current_move(win, lookback=lookback)
+    if move is None:
+        return False
+    edge = move["swing_low"][1] if direction == "bullish" else move["swing_high"][1]
+    return abs(price - edge) <= RANGE_EDGE_ATR * atr
 
 
 def _reverse_close_triggered(trade, bar):
@@ -160,22 +229,44 @@ def _check_exit(trade, bar):
 
 def _close_trade(trade, bar, tick_value, tick_size):
     eff_sl = _get_effective_sl(trade)
+    exit_reason = "close"
     if _reverse_close_triggered(trade, bar):
         trade.exit_price = bar["close"]
+        exit_reason = "reverse"
     elif trade.direction == "buy":
         if bar["low"] <= eff_sl:
             trade.exit_price = eff_sl
+            exit_reason = "sl"
         elif bar["high"] >= trade.tp1:
             trade.exit_price = trade.tp1
+            exit_reason = "tp"
         else:
             trade.exit_price = bar["close"]
     else:
         if bar["high"] >= eff_sl:
             trade.exit_price = eff_sl
+            exit_reason = "sl"
         elif bar["low"] <= trade.tp1:
             trade.exit_price = trade.tp1
+            exit_reason = "tp"
         else:
             trade.exit_price = bar["close"]
+
+    if SPREAD_PRICE > 0:
+        # Charge the full spread against the exit. Buy exits on the bid
+        # (exit - spread/2) having entered on the ask (+ spread/2); sell
+        # the mirror. Net: exit_price pushed a full spread against us.
+        if trade.direction == "buy":
+            trade.exit_price -= SPREAD_PRICE
+        else:
+            trade.exit_price += SPREAD_PRICE
+
+    if SLIP_PRICE > 0 and exit_reason == "sl":
+        # Stops get filled worse than the quoted level in live markets.
+        if trade.direction == "buy":
+            trade.exit_price -= SLIP_PRICE
+        else:
+            trade.exit_price += SLIP_PRICE
 
     if trade.direction == "buy":
         trade.result = "win" if trade.exit_price >= trade.entry_price else "loss"
@@ -205,16 +296,21 @@ def run_backtest():
 
     bars_needed = 96 * 22 * BACKTEST_MONTHS + 500  # More bars for M1
 
-    # Pre-fetch M1 data for trend filter (EMA10/EMA100)
-    trend_data = {}
-    if config.USE_TREND_FILTER:
+    # Pre-fetch trend data. "m1" mode: a single M1 EMA set used for every
+    # timeframe (== live). "own" mode: EMA computed on each signal TF's own
+    # bars inside the per-TF loop, so long windows don't lose the filter.
+    trend_data = {}  # {(symbol, tf): {"df": df, "fast": ..., "slow": ...}}
+    if config.USE_TREND_FILTER and not RELAX_TREND and TREND_TF_MODE == "m1":
         for symbol in BACKTEST_SYMBOLS:
-            trend_bars = 96 * 22 * BACKTEST_MONTHS + 500
+            trend_bars = bars_needed
             trend_df = get_ohlc(symbol, TREND_TF, trend_bars)
             if trend_df is not None and len(trend_df) > 160:
                 fast_ema = filters.calc_ema(trend_df["close"], 10)
                 slow_ema = filters.calc_ema(trend_df["close"], 100)
-                trend_data[symbol] = {"df": trend_df, "fast": fast_ema, "slow": slow_ema}
+                for tf in BACKTEST_TIMEFRAMES:
+                    trend_data[(symbol, tf)] = {
+                        "df": trend_df, "fast": fast_ema, "slow": slow_ema
+                    }
 
     all_trades = []
     balance = INITIAL_BALANCE
@@ -260,6 +356,7 @@ def run_backtest():
                     trade.bars_held += 1
 
                     _update_trailing_stop(trade, current_bar, current_atr)
+                    _update_be_protect(trade, current_bar)
 
                     if trade.bars_held >= MAX_BARS:
                         _close_trade(trade, current_bar, tick_value, tick_size)
@@ -272,10 +369,11 @@ def run_backtest():
 
                 open_trades = [t for t in open_trades if t.result == "open"]
 
-                # Cooldown: 10 min = 10 bars on M1
+                # Cooldown: live skips a symbol for TRADE_COOLDOWN_SECONDS
+                # (600s = 10 min) after its last entry, on any timeframe.
                 if symbol in last_trade_time:
-                    bars_since = i - last_trade_time[symbol]
-                    if bars_since < 600:  # 600 seconds / 60s per bar
+                    elapsed = (current_time - last_trade_time[symbol]).total_seconds()
+                    if elapsed < TRADE_COOLDOWN_SECONDS:
                         continue
 
                 if open_trades:
@@ -294,22 +392,28 @@ def run_backtest():
                 prev_close = prev_bar["close"]
 
                 # ─── Trend filter (EMA10/EMA100) ────────────────────────
-                if config.USE_TREND_FILTER and symbol in trend_data:
-                    t_info = trend_data[symbol]
-                    t_df = t_info["df"]
-                    t_fast = t_info["fast"]
-                    t_slow = t_info["slow"]
-                    t_idx = t_df["time"].searchsorted(current_time, side="right") - 1
-                    if t_idx > 0 and t_idx < len(t_df):
-                        t_price = t_df.iloc[t_idx]["close"]
-                        f_val = t_fast.iloc[t_idx]
-                        s_val = t_slow.iloc[t_idx]
-                        uptrend = f_val > s_val
-                        downtrend = f_val < s_val
-                        if direction == "bullish" and not (uptrend and t_price > f_val):
-                            continue
-                        if direction == "bearish" and not (downtrend and t_price < f_val):
-                            continue
+                if config.USE_TREND_FILTER and not RELAX_TREND:
+                    if TREND_TF_MODE == "own":
+                        trend_data[(symbol, tf)] = {
+                            "df": df, "fast": filters.calc_ema(df["close"], 10),
+                            "slow": filters.calc_ema(df["close"], 100),
+                        }
+                    t_info = trend_data.get((symbol, tf))
+                    if t_info is not None:
+                        t_df = t_info["df"]
+                        t_fast = t_info["fast"]
+                        t_slow = t_info["slow"]
+                        t_idx = t_df["time"].searchsorted(current_time, side="right") - 1
+                        if t_idx > 0 and t_idx < len(t_df):
+                            t_price = t_df.iloc[t_idx]["close"]
+                            f_val = t_fast.iloc[t_idx]
+                            s_val = t_slow.iloc[t_idx]
+                            uptrend = f_val > s_val
+                            downtrend = f_val < s_val
+                            if direction == "bullish" and not (uptrend and t_price > f_val):
+                                continue
+                            if direction == "bearish" and not (downtrend and t_price < f_val):
+                                continue
 
                 # ─── Wick SL (prev bar low/high) - 5 pip buffer ───────
                 signal_wick = prev_bar["low"] if direction == "bullish" else prev_bar["high"]
@@ -332,6 +436,14 @@ def run_backtest():
                 # to run straight to the stop.
                 if ATR_GATE > 0 and current_atr > ATR_GATE:
                     continue
+
+                # ─── A/B: Range-edge gate (mean-reversion mode, M1 only) ─────────
+                # Live applies this gate on M1 exclusively (signal_engine
+                # `_analyze_pattern`), so the backtest does too.
+                if RANGE_EDGE_ATR > 0 and tf == mt5.TIMEFRAME_M1:
+                    swing_window = df.iloc[max(0, i - 150):i]
+                    if not _range_edge_ok(swing_window, direction, prev_close, current_atr):
+                        continue
 
                 sl_dist = abs(prev_close - swing_sl)
                 if sl_dist < config.MIN_STOP_DISTANCE:
@@ -366,7 +478,7 @@ def run_backtest():
                 open_trades.append(trade)
                 all_trades.append(trade)
                 signals_found += 1
-                last_trade_time[symbol] = i
+                last_trade_time[symbol] = current_time
 
                 equity_points.append({
                     "time": current_time,
@@ -613,9 +725,43 @@ if __name__ == "__main__":
     p.add_argument("--trail-step", type=float, default=None, help="override TRAIL_STEP_ATR")
     p.add_argument("--wick-guard", type=float, default=None, help="None=config; skip if forming bar pierced signal wick")
     p.add_argument("--atr-gate", type=float, default=None, help="None=config; skip if ATR(14) > value")
+    p.add_argument("--range-edge", type=float, default=None, help="None=config; require entry within N*ATR of a range extreme")
+    p.add_argument("--relax-trend", action="store_true", help="skip the EMA10/100 trend filter (mean-reversion mode)")
+    def _tf_arg(s):
+        vals = [x for x in s.split(",") if x]
+        for v in vals:
+            if v not in ("M1", "M5"):
+                raise argparse.ArgumentTypeError(f"unknown timeframe {v!r}")
+        return vals
+
+    p.add_argument("--tf", type=_tf_arg, default=["M1", "M5"], help="timeframes to backtest (comma list, default both as live)")
+    p.add_argument("--symbol", default="XAUUSD", help="comma-separated symbols (default XAUUSD)")
+    p.add_argument("--months", type=int, default=3, help="backtest lookback in months (7 = ~3.5 months of M1 depth)")
+    p.add_argument("--force-pattern", action="store_true", help="use pattern entry mode for all symbols (needed for non-gold)")
+    p.add_argument("--max-bars", type=int, default=None, help="None=config; force-close after N M1 bars in trade")
+    p.add_argument("--trend-tf", choices=["m1", "own"], default="m1",
+                   help="trend filter data: 'm1' (matches live) or 'own' (EMA on signal TF's bars)")
+    p.add_argument("--spread", type=float, default=None,
+                   help="None=config; round-trip spread cost in price units (0 = idealized)")
+    p.add_argument("--slip", type=float, default=None,
+                   help="None=config; extra slippage on stop-loss fills in price units")
     p.add_argument("--label", default="", help="variant label for report")
     p.add_argument("--no-report", action="store_true", help="skip PDF + Telegram send")
     args = p.parse_args()
+
+    tf_map = {"M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5}
+    BACKTEST_TIMEFRAMES = [tf_map[x] for x in args.tf]
+    BACKTEST_SYMBOLS = [s.strip() for s in args.symbol.split(",") if s.strip()]
+    BACKTEST_MONTHS = args.months
+    if args.force_pattern:
+        config.ENTRY_MODE = "pattern"  # process-local; live config untouched
+    if args.max_bars is not None:
+        MAX_BARS = args.max_bars
+    TREND_TF_MODE = args.trend_tf
+    if args.spread is not None:
+        SPREAD_PRICE = args.spread
+    if args.slip is not None:
+        SLIP_PRICE = args.slip
 
     if args.trail_start is not None:
         TRAIL_START_ATR = args.trail_start
@@ -623,12 +769,15 @@ if __name__ == "__main__":
         TRAIL_STEP_ATR = args.trail_step
     WICK_GUARD = args.wick_guard if args.wick_guard is not None else config.get_symbol_param("XAUUSD", "WICK_GUARD", 0.0)
     ATR_GATE = args.atr_gate if args.atr_gate is not None else config.get_symbol_param("XAUUSD", "ATR_GATE", 0.0)
+    RELAX_TREND = args.relax_trend
+    RANGE_EDGE_ATR = args.range_edge if args.range_edge is not None else config.get_symbol_param("XAUUSD", "RANGE_EDGE_ATR", 0.0)
     RUN_LABEL = args.label
     SEND_REPORT = not args.no_report
 
     print(f"A/B variant: {RUN_LABEL or 'baseline'}"
           f" | trail {TRAIL_START_ATR}/{TRAIL_STEP_ATR}"
-          f" | wick-guard {WICK_GUARD} | atr-gate {ATR_GATE}")
+          f" | wick-guard {WICK_GUARD} | atr-gate {ATR_GATE}"
+          f" | range-edge {RANGE_EDGE_ATR} | relax-trend {RELAX_TREND}")
 
     result = run_backtest()
     mt5.shutdown()
