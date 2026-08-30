@@ -133,7 +133,7 @@ def notify_signal(signal):
         f"<b>Timeframe:</b> {signal['timeframe_name']}\n"
         f"<b>Entry:</b> {signal['entry_price']:.2f}\n"
         f"<b>Stop Loss:</b> {signal['sl']:.2f}\n"
-        f"<b>Take Profit:</b> {signal['tp1']:.2f}\n\n"
+        f"<b>Take Profit:</b> {'OPEN (RR-trail)' if config.USE_OPEN_RR else ('%.2f' % signal['tp1'])}\n\n"
         f"<i>Auto-executing...</i>"
     )
     send_signal_to_group(text)
@@ -152,7 +152,7 @@ def notify_trade_opened(signal, result):
         f"<b>Direction:</b> {direction}\n"
         f"<b>Entry Price:</b> {price:.2f}\n"
         f"<b>Stop Loss:</b> {signal['sl']:.2f}\n"
-        f"<b>Take Profit:</b> {signal['tp1']:.2f}"
+        f"<b>Take Profit:</b> {'OPEN (RR-trail)' if config.USE_OPEN_RR else ('%.2f' % signal['tp1'])}"
     )
     send_signal_to_group(text)
     return send_message(text)

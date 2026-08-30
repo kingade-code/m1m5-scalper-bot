@@ -93,6 +93,36 @@ def has_existing_signal(symbol, timeframe):
     return False
 
 
+_COMMENT_BUDGET = 31  # Exness rejects comments with '|'/'=' field combos; keep plain ASCII
+
+
+def _num_fits(value, budget):
+    """Format a price to the most decimals that fit `budget` chars."""
+    for dec in (4, 3, 2, 1, 0):
+        s = "%.*f" % (dec, value)
+        if len(s) <= budget:
+            return s
+    return "%.0f" % value
+
+
+def _build_comment(timeframe_name, wick, sl):
+    """Order comment: kg_<TF> w<wick> sl<SL> (space-separated).
+
+    Exness-MT5 rejects the previously used '|w=...|sl=...' form with
+    'Invalid "comment" argument', so no pipes or equals signs. Stays
+    <= 31 chars total; precision degrades only when the price needs it."""
+    prefix = "kg_" + timeframe_name
+    n_fields = (1 if wick is not None else 0) + (1 if sl is not None else 0)
+    marker_len = (1 if wick is not None else 0) + (2 if sl is not None else 0)
+    per = (_COMMENT_BUDGET - len(prefix) - marker_len) // n_fields if n_fields else 0
+    parts = [prefix]
+    if wick is not None:
+        parts.append("w" + _num_fits(wick, per - 1))
+    if sl is not None:
+        parts.append("sl" + _num_fits(sl, per - 2))
+    return " ".join(parts)[:_COMMENT_BUDGET]
+
+
 def execute_signal(signal):
     """Execute a trading signal by opening a market order."""
     symbol = signal["symbol"]
@@ -108,16 +138,16 @@ def execute_signal(signal):
         logger.error(f"Invalid lot size for {symbol}")
         return False
 
-    comment = f"kingade_{signal['timeframe_name']}"
-    if signal.get("signal_wick") is not None:
-        comment += f"|w={signal['signal_wick']:.3f}"
+    comment = _build_comment(signal["timeframe_name"],
+                             signal.get("signal_wick"),
+                             signal.get("sl"))
 
     result = mt5c.send_market_order(
         symbol=symbol,
         order_type=order_type,
         lot_size=lot_size,
         sl=signal["sl"],
-        tp=signal["tp1"],
+        tp=None if config.USE_OPEN_RR else signal["tp1"],
         comment=comment,
     )
 
@@ -204,11 +234,6 @@ def manage_open_positions():
         ticket = pos.ticket
         symbol = pos.symbol
 
-        # Get current ATR for trailing stop (use first configured timeframe)
-        atr = _get_current_atr(symbol, config.TIMEFRAMES[0])
-        if atr is None:
-            continue
-
         # Get current tick
         tick = mt5.symbol_info_tick(symbol)
         if tick is None:
@@ -220,9 +245,15 @@ def manage_open_positions():
         if _manage_reverse_close(pos, current_price):
             continue
 
-        # Calculate trailing stop
-        if config.USE_TRAILING_STOP:
-            _manage_trailing_stop(pos, current_price, atr)
+        # Calculate trailing stop (RR-step ratchet when open RR is active,
+        # otherwise the classic ATR trail)
+        if config.USE_OPEN_RR:
+            _manage_rr_step_trail(pos, current_price)
+        elif config.USE_TRAILING_STOP and config.get_symbol_param(
+                symbol, "TRAILING_ENABLED", True):
+            atr = _get_current_atr(symbol, config.TIMEFRAMES[0])
+            if atr is not None:
+                _manage_trailing_stop(pos, current_price, atr)
 
         # Track bar count and force close if max bars exceeded
         _manage_max_bars(pos)
@@ -297,11 +328,90 @@ def _manage_trailing_stop(pos, current_price, atr):
             logger.debug(f"Trailing stop update failed for #{ticket}: {result}")
 
 
+def _manage_rr_step_trail(pos, current_price):
+    """Open-RR ratchet (live mirror of the backtest `_update_rr_trail`).
+
+    No take-profit on the position. Once unrealized profit reaches
+    RR_TRAIL_START_R * original-SL-distance, the stop locks in
+    (milestone - RR_TRAIL_LOCK_R) * SL-distance, stepping every
+    RR_TRAIL_STEP_R R (3R -> ~2R, 5R -> ~4R, 7R -> ~6R, ...).
+    The original SL is read from the order comment so the risk basis
+    survives stop modifications.
+    """
+    ticket = pos.ticket
+    symbol = pos.symbol
+    direction = "buy" if pos.type == mt5.ORDER_TYPE_BUY else "sell"
+    entry = pos.price_open
+    original_sl = _original_sl_from_comment(pos.comment)
+    if original_sl is None:
+        return
+
+    sl_distance = abs(entry - original_sl)
+    if sl_distance <= 0:
+        return
+
+    unrealized = (current_price - entry) if direction == "buy" else (entry - current_price)
+    if unrealized <= 0:
+        return
+
+    rr = unrealized / sl_distance
+    if rr < config.RR_TRAIL_START_R:
+        return
+
+    milestone = config.RR_TRAIL_START_R + (
+        (rr - config.RR_TRAIL_START_R) // config.RR_TRAIL_STEP_R
+    ) * config.RR_TRAIL_STEP_R
+    lock_r = milestone - config.RR_TRAIL_LOCK_R
+    if lock_r <= 0:
+        return
+
+    lock_price = entry + lock_r * sl_distance if direction == "buy" else entry - lock_r * sl_distance
+    current_sl = pos.sl
+
+    if direction == "buy" and lock_price <= current_sl:
+        return
+    if direction == "sell" and (current_sl == 0 or lock_price >= current_sl):
+        return
+
+    symbol_info = mt5.symbol_info(symbol)
+    if symbol_info:
+        lock_price = round(lock_price, symbol_info.digits)
+        min_dist = config.MIN_STOP_DISTANCE * symbol_info.point
+        if direction == "buy" and (current_price - lock_price) < min_dist:
+            lock_price = current_price - min_dist
+        elif direction == "sell" and (lock_price - current_price) < min_dist:
+            lock_price = current_price + min_dist
+
+    request = {
+        "action": mt5.TRADE_ACTION_SLTP,
+        "position": ticket,
+        "symbol": symbol,
+        "sl": lock_price,
+        "tp": 0.0,
+        "magic": config.MAGIC_NUMBER,
+    }
+
+    result = mt5.order_send(request)
+    if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+        logger.info(
+            f"RR TRAIL | {symbol} #{ticket} | {direction.upper()} | "
+            f"reached ~{milestone:.1f}R ({rr:.2f}R) | "
+            f"SL: {pos.sl:.5f} -> {lock_price:.5f}"
+        )
+        try:
+            tg.notify_sl_trail(symbol, ticket, direction, pos.sl, lock_price,
+                               current_price, pos.profit)
+        except Exception as e:
+            logger.debug(f"RR trail notify failed: {e}")
+    else:
+        logger.debug(f"RR trail update failed for #{ticket}: {result}")
+
+
 def _manage_reverse_close(pos, current_price):
     """Close trade early if price reverses toward SL and reaches the
     wick of the hammer/engulfing signal candle.
 
-    The wick is read from the order comment (kingade_M1|w=<price>).
+    The wick is read from the order comment (kg_M1 w<price>).
     Only fires when price has already moved against the entry (i.e. the
     market reversed) AND is within REVERSE_CLOSE_DISTANCE of the wick.
     Returns True if the position was closed.
@@ -345,14 +455,32 @@ def _manage_reverse_close(pos, current_price):
     return True
 
 
+def _original_sl_from_comment(comment):
+    """Extract the ORIGINAL entry stop-loss from the order comment
+    (kg_TF w<wick> sl<SL>) so RR trailing always measures risk against
+    the untouched initial stop even after SL modifications."""
+    if not comment:
+        return None
+    for tok in comment.split():
+        if tok.startswith("sl") and len(tok) > 2:
+            try:
+                return float(tok[2:])
+            except ValueError:
+                continue
+    return None
+
+
 def _signal_wick_from_comment(comment):
-    """Extract signal candle wick from order comment (kingade_TF|w=...)."""
-    if not comment or "|w=" not in comment:
+    """Extract signal candle wick from order comment (kg_TF w<wick> sl<sl>)."""
+    if not comment:
         return None
-    try:
-        return float(comment.split("|w=", 1)[1])
-    except ValueError:
-        return None
+    for tok in comment.split():
+        if tok.startswith("w") and len(tok) > 1:
+            try:
+                return float(tok[1:])
+            except ValueError:
+                return None
+    return None
 
 
 def _manage_max_bars(pos):
@@ -396,8 +524,10 @@ def _manage_max_bars(pos):
 
 def _tf_from_comment(comment):
     """Extract timeframe string from order comment."""
+    if comment.startswith("kg_"):
+        return comment[3:].split(" ", 1)[0]
     if comment.startswith("kingade_"):
-        return comment[8:].split("|", 1)[0]
+        return comment[8:].split("|", 1)[0].split(" ", 1)[0]
     return ""
 
 

@@ -98,12 +98,19 @@ def _set_paused(paused=True):
 # ─── Market Hours ─────────────────────────────────────────────────
 _market_paused = False
 
+# Instruments that trade 24/7 (crypto). Their presence in SYMBOL_LIST
+# keeps the bot alive on weekends / outside forex hours.
+_CRYPTO_ALWAYS_ON = {"BTCUSD"}
+
 def _is_market_open():
-    """Check if forex market is open.
-    Market opens Sunday 22:00 UTC, closes Friday 22:00 UTC."""
+    """Check if any configured market is open.
+    Forex: opens Sunday 22:00 UTC, closes Friday 22:00 UTC.
+    Crypto in SYMBOL_LIST trades 24/7, so weekends stay live for them."""
     now = datetime.utcnow()
     weekday = now.weekday()  # 0=Mon, 4=Fri, 5=Sat, 6=Sun
-    
+
+    if any(s in _CRYPTO_ALWAYS_ON for s in config.SYMBOL_LIST):
+        return True
     # Saturday: always closed
     if weekday == 5:
         return False
@@ -173,7 +180,7 @@ _last_candle_time = {}
 _last_report_date = None
 _last_weekly_report = None
 _last_trade_time = {}  # cooldown tracking
-TRADE_COOLDOWN_SECONDS = 600  # 10 minutes
+TRADE_COOLDOWN_SECONDS = config.TRADE_COOLDOWN_SECONDS  # 0 = off, only open position blocks
 
 
 def _is_new_candle(symbol, timeframe):
@@ -351,8 +358,11 @@ def main():
                         direction = signal_data["direction"].upper()
                         emoji = "\U0001F7E2" if direction == "BUY" else "\U0001F534"
                         sl_dist = abs(signal_data["entry_price"] - signal_data["sl"])
-                        tp_dist = abs(signal_data["tp1"] - signal_data["entry_price"])
-                        rr_ratio = tp_dist / sl_dist if sl_dist > 0 else 0
+                        tp_txt, rr_txt = "OPEN", "1:inf"
+                        if not config.USE_OPEN_RR:
+                            tp_dist = abs(signal_data["tp1"] - signal_data["entry_price"])
+                            tp_txt = f"{tp_dist:.2f} pts"
+                            rr_txt = f"1:{tp_dist / sl_dist:.2f}" if sl_dist > 0 else "1:0"
 
                         logger.info(
                             f"\n{'='*50}\n"
@@ -361,8 +371,8 @@ def main():
                             f"  Direction:  {direction}\n"
                             f"  Entry:      {signal_data['entry_price']:.2f}\n"
                             f"  Stop Loss:  {signal_data['sl']:.2f} ({sl_dist:.2f} pts)\n"
-                            f"  Take Profit:{signal_data['tp1']:.2f} ({tp_dist:.2f} pts)\n"
-                            f"  Risk:Reward: 1:{rr_ratio:.2f}\n"
+                            f"  Take Profit:{tp_txt}\n"
+                            f"  Risk:Reward: {rr_txt}\n"
                             f"  ATR(14):    {signal_data.get('atr', 0):.2f}\n"
                             f"  Swing High: {signal_data.get('swing_high', 0):.2f}\n"
                             f"  Swing Low:  {signal_data.get('swing_low', 0):.2f}\n"

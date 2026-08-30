@@ -29,12 +29,21 @@ TREND_TF = mt5.TIMEFRAME_M1
 TREND_TF_MODE = "m1"  # "m1" | "own"
 
 # Live cooldown is 600 SECONDS (10 min) regardless of timeframe.
-TRADE_COOLDOWN_SECONDS = 600
+TRADE_COOLDOWN_SECONDS = config.TRADE_COOLDOWN_SECONDS  # live parity
 
 # Trailing config (read live per-symbol override so backtest == live behavior)
 TRAIL_START_ATR = config.get_symbol_param("XAUUSD", "TRAILING_START_ATR", config.TRAILING_START_ATR)  # live: 0.3
 TRAIL_STEP_ATR = config.get_symbol_param("XAUUSD", "TRAILING_STEP_ATR", config.TRAILING_STEP_ATR)     # live: 0.1
 USE_TRAILING = config.USE_TRAILING_STOP
+
+# Open RR + RR-step trailing (live == config). When ON, there is no fixed
+# TP (1:infinity) and the ATR trail is bypassed; the stop ratchets to
+# (milestone - RR_TRAIL_LOCK_R)*R at every RR_TRAIL_STEP_R milestone
+# starting at RR_TRAIL_START_R.
+USE_OPEN_RR = config.USE_OPEN_RR
+RR_TRAIL_START_R = config.RR_TRAIL_START_R
+RR_TRAIL_STEP_R = config.RR_TRAIL_STEP_R
+RR_TRAIL_LOCK_R = config.RR_TRAIL_LOCK_R
 
 # ─── A/B flags (overridden via CLI, see __main__) ─────────────────-
 WICK_GUARD = 0.0  # 0 = disabled; skip entry if forming bar pierced signal wick +/- this many price units
@@ -131,6 +140,8 @@ def get_symbol_tick_value(symbol):
 def _update_trailing_stop(trade, bar, current_atr):
     if not USE_TRAILING:
         return
+    if USE_OPEN_RR:
+        return  # RR-step trail replaces ATR trailing
     trail_start = current_atr * TRAIL_START_ATR
     trail_step = current_atr * TRAIL_STEP_ATR
     if trade.direction == "buy":
@@ -167,6 +178,39 @@ def _update_be_protect(trade, bar):
             floor = trade.entry_price - BE_FLOOR
             if trade.trailing_sl is None or floor < trade.trailing_sl:
                 trade.trailing_sl = floor
+
+
+def _update_rr_trail(trade, bar):
+    """Open-RR ratchet: once unrealized profit reaches RR_TRAIL_START_R*SL,
+    the stop locks (milestone - RR_TRAIL_LOCK_R)*R every RR_TRAIL_STEP_R R."""
+    if not USE_OPEN_RR:
+        return
+    sl_distance = abs(trade.entry_price - trade.sl)
+    if sl_distance <= 0:
+        return
+    if trade.direction == "buy":
+        unrealized = bar["high"] - trade.entry_price
+    else:
+        unrealized = trade.entry_price - bar["low"]
+    if unrealized <= 0:
+        return
+    rr = unrealized / sl_distance
+    if rr < RR_TRAIL_START_R:
+        return
+    milestone = RR_TRAIL_START_R + (
+        (rr - RR_TRAIL_START_R) // RR_TRAIL_STEP_R
+    ) * RR_TRAIL_STEP_R
+    lock_r = milestone - RR_TRAIL_LOCK_R
+    if lock_r <= 0:
+        return
+    if trade.direction == "buy":
+        lock_price = trade.entry_price + lock_r * sl_distance
+        if trade.trailing_sl is None or lock_price > trade.trailing_sl:
+            trade.trailing_sl = lock_price
+    else:
+        lock_price = trade.entry_price - lock_r * sl_distance
+        if trade.trailing_sl is None or lock_price < trade.trailing_sl:
+            trade.trailing_sl = lock_price
 
 
 def _get_effective_sl(trade):
@@ -356,6 +400,7 @@ def run_backtest():
                     trade.bars_held += 1
 
                     _update_trailing_stop(trade, current_bar, current_atr)
+                    _update_rr_trail(trade, current_bar)
                     _update_be_protect(trade, current_bar)
 
                     if trade.bars_held >= MAX_BARS:
@@ -450,11 +495,14 @@ def run_backtest():
                     continue
 
                 # ─── TP: 1:4.0 RR ───────────────────────────────────
-                tp_dist = sl_dist * RR_RATIO
-                if direction == "bullish":
-                    atr_tp = prev_close + tp_dist
+                if USE_OPEN_RR:
+                    atr_tp = float("inf") if signal_direction == "buy" else float("-inf")
                 else:
-                    atr_tp = prev_close - tp_dist
+                    tp_dist = sl_dist * RR_RATIO
+                    if direction == "bullish":
+                        atr_tp = prev_close + tp_dist
+                    else:
+                        atr_tp = prev_close - tp_dist
 
                 # ─── Lot sizing (4% risk, max $20, max 0.10 lot) ──────
                 risk_amount = balance * RISK_PER_TRADE / 100.0

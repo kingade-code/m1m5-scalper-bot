@@ -141,7 +141,7 @@ def send_market_order(symbol, order_type, lot_size, sl, tp, comment=""):
     digits = symbol_info.digits
 
     sl = round(sl, digits)
-    tp = round(tp, digits)
+    tp = 0.0 if tp is None else round(tp, digits)
 
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
@@ -160,7 +160,10 @@ def send_market_order(symbol, order_type, lot_size, sl, tp, comment=""):
 
     result = mt5.order_send(request)
     if result is None:
-        logger.error(f"Order send failed: {mt5.last_error()}")
+        logger.error(
+            f"Order send failed: {mt5.last_error()} | "
+            f"comment={comment!r} (len={len(comment)})"
+        )
         return None
 
     if result.retcode != mt5.TRADE_RETCODE_DONE:

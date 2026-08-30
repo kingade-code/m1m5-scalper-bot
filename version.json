@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0",
+  "version": "2.2.0",
   "min_version": "2.0.0",
   "files": {
     "main.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/main.py",
@@ -13,7 +13,10 @@
     "license_manager.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/license_manager.py",
     "trade_manager.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/trade_manager.py",
     "telegram_notifier.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/telegram_notifier.py",
+    "daily_report.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/daily_report.py",
+    "login_setup.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/login_setup.py",
+    "choch.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/choch.py",
     "updater.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/updater.py"
   },
-  "changelog": "v2.1.0 - Auto-update system, no-filter mode, PDF reports"
+  "changelog": "v2.2.0 - Open 1:inf RR step-trailing (3R/5R/7R lock), Exness-compatible order comments, 200-bar entries, per-TF SL buffer"
 }

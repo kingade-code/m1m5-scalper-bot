@@ -23,3 +23,8 @@ Desktop.ini
 
 bot.lock
 PAUSED
+
+# Backtest data (large) - keep out of git
+data/
+download/
+*.err

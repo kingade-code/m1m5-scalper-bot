@@ -16,6 +16,18 @@ import config
 logger = logging.getLogger(__name__)
 
 
+def _pip_buffer(symbol, timeframe):
+    """SL buffer for an entry, keyed by the entry timeframe.
+    Prefers SL_PIP_BUFFER_<TF> (e.g. SL_PIP_BUFFER_M5) overrides, else
+    the symbol's base SL_PIP_BUFFER. Lets M5 entries use a wider buffer
+    than M1 instead of inheriting the M1-sized one."""
+    value = config.get_symbol_param(
+        symbol, f"SL_PIP_BUFFER_{_tf_name(timeframe)}", None)
+    if value is None:
+        value = config.get_symbol_param(symbol, "SL_PIP_BUFFER", 0.5)
+    return value
+
+
 def analyze_symbol(symbol, timeframe):
     """Analyze a single symbol on a given timeframe for a Kingade setup.
 
@@ -64,8 +76,8 @@ def _analyze_pattern(symbol, timeframe):
         logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by trend filter")
         return None
 
-    # Momentum filter: RSI + candle body ratio
-    if not filters.check_momentum_filter(df, direction):
+    # Momentum filter: RSI + candle body ratio (off = catch-all trend setups)
+    if config.USE_MOMENTUM_FILTER and not filters.check_momentum_filter(df, direction):
         logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by momentum filter")
         return None
 
@@ -74,7 +86,7 @@ def _analyze_pattern(symbol, timeframe):
     current_atr = atr_series.iloc[-2]
 
     # 5 pip buffer above/below wick for SL
-    pip_buffer = config.get_symbol_param(symbol, "SL_PIP_BUFFER", 0.5)
+    pip_buffer = _pip_buffer(symbol, timeframe)
 
     # SL calculation
     sl_method = config.get_symbol_param(symbol, "SL_METHOD", "wick")
@@ -97,13 +109,16 @@ def _analyze_pattern(symbol, timeframe):
     if max_stop > 0 and sl_dist > max_stop:
         return None
 
-    # TP based on SL distance * 2.5 (1:2.5 RR)
-    rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 2.5)
-    tp_dist = sl_dist * rr_ratio
-    if direction == "bullish":
-        atr_tp = current_price + tp_dist
+    # TP based on SL distance * RR ratio (open 1:inf when USE_OPEN_RR)
+    if config.USE_OPEN_RR:
+        atr_tp = float("inf") if direction == "bullish" else float("-inf")
     else:
-        atr_tp = current_price - tp_dist
+        rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 2.5)
+        tp_dist = sl_dist * rr_ratio
+        if direction == "bullish":
+            atr_tp = current_price + tp_dist
+        else:
+            atr_tp = current_price - tp_dist
 
     timeframe_name = _tf_name(timeframe)
     # Signal candle wick (hammer/engulfing extreme) for early reverse-close
@@ -174,7 +189,7 @@ def _analyze_pattern(symbol, timeframe):
         f"SIGNAL | {symbol} {timeframe_name} | "
         f"{signal['direction'].upper()} | "
         f"Entry: {current_price:.5f} | "
-        f"SL: {signal['sl']:.5f} | TP: {signal['tp1']:.5f} | "
+        f"SL: {signal['sl']:.5f} | TP: {'OPEN' if config.USE_OPEN_RR else ('%.5f' % signal['tp1'])} | "
         f"ATR: {current_atr:.5f} | Pattern: Hammer+Engulf"
     )
 
@@ -235,8 +250,8 @@ def _analyze_fibonacci(symbol, timeframe):
         logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by CHoCH filter")
         return None
 
-    # Momentum filter: RSI + candle body ratio
-    if not filters.check_momentum_filter(df, direction):
+    # Momentum filter: RSI + candle body ratio (off = catch-all trend setups)
+    if config.USE_MOMENTUM_FILTER and not filters.check_momentum_filter(df, direction):
         logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by momentum filter")
         return None
 
@@ -245,7 +260,7 @@ def _analyze_fibonacci(symbol, timeframe):
     current_atr = atr_series.iloc[-2]
 
     # 5 pip buffer above/below wick for SL
-    pip_buffer = config.get_symbol_param(symbol, "SL_PIP_BUFFER", 0.5)
+    pip_buffer = _pip_buffer(symbol, timeframe)
 
     # SL calculation
     sl_method = config.get_symbol_param(symbol, "SL_METHOD", "wick")
@@ -270,13 +285,16 @@ def _analyze_fibonacci(symbol, timeframe):
     if max_stop > 0 and sl_dist > max_stop:
         return None
 
-    # TP based on SL distance * RR ratio
-    rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 4.0)
-    tp_dist = sl_dist * rr_ratio
-    if direction == "bullish":
-        atr_tp = prev_close + tp_dist
+    # TP based on SL distance * RR ratio (open 1:inf when USE_OPEN_RR)
+    if config.USE_OPEN_RR:
+        atr_tp = float("inf") if direction == "bullish" else float("-inf")
     else:
-        atr_tp = prev_close - tp_dist
+        rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 4.0)
+        tp_dist = sl_dist * rr_ratio
+        if direction == "bullish":
+            atr_tp = prev_close + tp_dist
+        else:
+            atr_tp = prev_close - tp_dist
 
     timeframe_name = _tf_name(timeframe)
     fib_direction = entry_zone["direction"]
@@ -303,7 +321,7 @@ def _analyze_fibonacci(symbol, timeframe):
         f"SIGNAL | {symbol} {timeframe_name} | "
         f"{signal['direction'].upper()} | "
         f"Entry: {prev_close:.5f} | "
-        f"SL: {signal['sl']:.5f} | TP: {signal['tp1']:.5f} | "
+        f"SL: {signal['sl']:.5f} | TP: {'OPEN' if config.USE_OPEN_RR else ('%.5f' % signal['tp1'])} | "
         f"ATR: {current_atr:.5f}"
     )
 

@@ -37,7 +37,7 @@ SLIPPAGE = 3
 # EA. Manual MT5 terminal trades carry magic 0 here, so they get killed
 # on the next 5s scan. Other EAs using the same account can be exempted.
 MANUAL_TRADE_GUARD = True
-GUARD_EXEMPT_MAGICS = {730411}  # amt_order_flow_bot.py
+GUARD_EXEMPT_MAGICS = {730411, 234100}  # amt_order_flow_bot.py; liquidity-sweep bot (DC, magic 234100)
 GUARD_DEBUG = False             # log-but-don't-close mode (testing only)
 
 # ─── Symbol Filter ────────────────────────────────────────────────
@@ -58,24 +58,27 @@ SYMBOL_OVERRIDES = {
         "MIN_STOP_DISTANCE": 1.0,
         "SL_PIP_BUFFER": 0.5,  # 5 pips above/below wick
         "REVERSE_CLOSE_DISTANCE": 0.2,  # 2 pips from signal wick
-        "WICK_GUARD": 0.3,  # 3 pips; skip entry if forming bar already pierced signal wick
+        "WICK_GUARD": 0.0,  # disabled: catch every trend-aligned setup
         "RANGE_EDGE_ATR": 1.0,  # A/B-validated (3.4m: PF 7.8->11.6, maxDD 3.3%->1.1%); M1 only
     },
-    # BTCUSD (backtest-ready; NOT in SYMBOL_LIST yet -> the live bot ignores
-    # it until it is added. Params calibrated to gold by ATR ratio:
-    # M1 ATR(14) ~34 vs gold ~1.7 => buffers x10 stress-tested, spread is a
-    # placeholder (weekend quote was $7; live hours are ~$0.5-1.5).
+    # BTCUSD (live since 2026-08-29; both this bot and the DC liquidity-
+    # sweep bot trade it on this account). Buffers ATR-scaled to gold
+    # (M1 ATR(14) ~34 vs gold ~1.7 => x10), spread is a placeholder
+    # (weekend quote was $7; live hours are ~$0.5-1.5). Trailing disabled
+    # and RR cut to 1:3 by user request.
     "BTCUSD": {
         "TIMEFRAMES": [mt5.TIMEFRAME_M1, mt5.TIMEFRAME_M5],
+        "TRAILING_ENABLED": False,
         "TRAILING_START_ATR": 0.3,
         "TRAILING_STEP_ATR": 0.1,
         "SWING_LOOKBACK": 40,
         "ENTRY_MODE": "pattern",
         "SPREAD": 1.0,
-        "RR_RATIO": 4.0,
-        "SL_PIP_BUFFER": 10.0,   # ~0.29 * M1 ATR (gold: 0.5/1.7)
+        "RR_RATIO": 3.0,
+        "SL_PIP_BUFFER": 10.0,     # M1 entries ~0.29 * M1 ATR (gold: 0.5/1.7)
+        "SL_PIP_BUFFER_M5": 20.0,  # M5 entries ~0.32 * M5 ATR (63/34 * 10), per-user request
         "REVERSE_CLOSE_DISTANCE": 4.0,
-        "WICK_GUARD": 6.0,       # ~0.17 * M1 ATR
+        "WICK_GUARD": 0.0,       # disabled: catch every trend-aligned setup
         "RANGE_EDGE_ATR": 0.0,   # disabled for BTC first look
     },
 }
@@ -136,7 +139,24 @@ USE_REVERSE_CLOSE = False
 REVERSE_CLOSE_DISTANCE = 0.2  # 2 pips from signal wick (0.1 = 1 pip on gold)
 
 # ─── Max Bars in Trade (counted on the trade's own entry timeframe) ──
-MAX_BARS_IN_TRADE = 45
+MAX_BARS_IN_TRADE = 200
+
+# ─── Same-symbol cooldown between trades (0 = off; only an OPEN
+#     position blocks a new entry, per user request) ────────────────
+TRADE_COOLDOWN_SECONDS = 0
+
+# ─── Open RR + RR-step trailing ──────────────────────────────────
+# 1:infinity RR — no fixed take-profit. The stop ratchets up in steps
+# once the trade moves past the start milestone:
+#   hit +3R  -> stop locks ~2R
+#   hit +5R  -> stop locks ~4R
+#   hit +7R  -> stop locks ~6R   (and so on, every RR_TRAIL_STEP_R R)
+# Winners ride until they reverse into the ratcheted stop or hit
+# MAX_BARS_IN_TRADE. ATR trailing is bypassed while this is on.
+USE_OPEN_RR = True
+RR_TRAIL_START_R = 3.0   # first milestone: start ratcheting at +3R
+RR_TRAIL_STEP_R = 2.0    # ratchet every 2R after the start point
+RR_TRAIL_LOCK_R = 1.0    # lock (milestone - 1)R behind price
 
 # ─── Logging ──────────────────────────────────────────────────────
 LOG_LEVEL = "DEBUG"
