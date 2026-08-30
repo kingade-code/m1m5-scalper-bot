@@ -129,23 +129,11 @@ def check_and_update():
         if filename in PROTECTED_FILES:
             continue
 
-        local_entry = local_files.get(filename, {})
-        if isinstance(local_entry, str):
-            local_entry = {}
-        local_md5 = file_hash(filename)
-        remote_md5 = local_entry.get("md5", "")
-
-        if local_md5 == remote_md5 and os.path.exists(filename):
-            continue
-
         backup_file(filename)
         logger.info(f"Updating {filename}...")
 
         if download_file(url, filename):
-            new_md5 = file_hash(filename)
-            if filename not in local_files or isinstance(local_files[filename], str):
-                local_files[filename] = {}
-            local_files[filename]["md5"] = new_md5
+            local_files[filename] = {"md5": file_hash(filename)}
             updated += 1
             logger.info(f"Updated {filename}")
         else:

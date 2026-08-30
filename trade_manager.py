@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Track bar counts for max-bars exit
 _bar_counts = {}
+_seen_bars = {}
 
 
 def calculate_lot_size(symbol, entry_price, sl_price):
@@ -153,6 +154,7 @@ def execute_signal(signal):
 
     if result is not None:
         _bar_counts[str(result.order)] = 0
+        _seen_bars[str(result.order)] = None
 
     return result
 
@@ -367,11 +369,7 @@ def _manage_rr_step_trail(pos, current_price):
 
     lock_price = entry + lock_r * sl_distance if direction == "buy" else entry - lock_r * sl_distance
     current_sl = pos.sl
-
-    if direction == "buy" and lock_price <= current_sl:
-        return
-    if direction == "sell" and (current_sl == 0 or lock_price >= current_sl):
-        return
+    sl_zero = (current_sl == 0)
 
     symbol_info = mt5.symbol_info(symbol)
     if symbol_info:
@@ -381,6 +379,13 @@ def _manage_rr_step_trail(pos, current_price):
             lock_price = current_price - min_dist
         elif direction == "sell" and (lock_price - current_price) < min_dist:
             lock_price = current_price + min_dist
+        lock_price = round(lock_price, symbol_info.digits)
+        current_sl = round(current_sl, symbol_info.digits)
+
+    if direction == "buy" and lock_price <= current_sl:
+        return
+    if direction == "sell" and (sl_zero or lock_price >= current_sl):
+        return
 
     request = {
         "action": mt5.TRADE_ACTION_SLTP,
@@ -497,19 +502,21 @@ def _manage_max_bars(pos):
         return
 
     key = f"{ticket}"
-    if key not in _bar_counts:
-        _bar_counts[key] = 0
+    if key not in _bar_counts or key not in _seen_bars:
+        _bar_counts.setdefault(key, 0)
+        _seen_bars.setdefault(key, None)
 
-    # Check new candle
     rates = mt5.copy_rates_from_pos(symbol, tf, 0, 2)
     if rates is None or len(rates) < 2:
         return
 
     last_bar_time = rates[-1]["time"]
-    prev_bar_time = rates[-2]["time"]
 
-    if last_bar_time > prev_bar_time:
+    if _seen_bars[key] is None:
+        _seen_bars[key] = last_bar_time
+    elif last_bar_time > _seen_bars[key]:
         _bar_counts[key] += 1
+        _seen_bars[key] = last_bar_time
 
     if _bar_counts[key] >= config.MAX_BARS_IN_TRADE:
         logger.info(
@@ -520,6 +527,7 @@ def _manage_max_bars(pos):
         mt5c.close_position(ticket)
         tg.notify_trade_closed(pos, profit)
         _bar_counts.pop(key, None)
+        _seen_bars.pop(key, None)
 
 
 def _tf_from_comment(comment):

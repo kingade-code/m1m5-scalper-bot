@@ -64,6 +64,7 @@ def _analyze_pattern(symbol, timeframe):
 
     # Use second-to-last candle (last closed)
     prev_bar = df.iloc[-2]
+    prev_close = prev_bar["close"]
 
     # Current market price for immediate entry
     symbol_info = mt5c.get_symbol_info(symbol)

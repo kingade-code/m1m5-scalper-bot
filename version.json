@@ -1,22 +1,22 @@
-{
-  "version": "2.2.1",
-  "min_version": "2.0.0",
-  "files": {
-    "main.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/main.py",
-    "signal_engine.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/signal_engine.py",
-    "config.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/config.py",
-    "filters.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/filters.py",
-    "pattern_detector.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/pattern_detector.py",
-    "swing_detector.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/swing_detector.py",
-    "fibonacci.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/fibonacci.py",
-    "mt5_connector.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/mt5_connector.py",
-    "license_manager.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/license_manager.py",
-    "trade_manager.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/trade_manager.py",
-    "telegram_notifier.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/telegram_notifier.py",
-    "daily_report.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/daily_report.py",
-    "login_setup.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/login_setup.py",
-    "choch.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/choch.py",
-    "updater.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/updater.py"
-  },
-  "changelog": "v2.2.1 - Python 3.14 support (auto-selects .venv / system 3.14), utcnow cleanup. v2.2.0 - Open 1:inf RR step-trailing (3R/5R/7R lock), Exness-compatible order comments, 200-bar entries, per-TF SL buffer"
+﻿{
+    "version":  "2.2.2",
+    "min_version":  "2.0.0",
+    "files":  {
+                  "signal_engine.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/signal_engine.py",
+                  "swing_detector.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/swing_detector.py",
+                  "main.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/main.py",
+                  "filters.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/filters.py",
+                  "license_manager.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/license_manager.py",
+                  "telegram_notifier.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/telegram_notifier.py",
+                  "pattern_detector.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/pattern_detector.py",
+                  "daily_report.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/daily_report.py",
+                  "fibonacci.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/fibonacci.py",
+                  "updater.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/updater.py",
+                  "choch.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/choch.py",
+                  "login_setup.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/login_setup.py",
+                  "trade_manager.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/trade_manager.py",
+                  "config.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/config.py",
+                  "mt5_connector.py":  "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/mt5_connector.py"
+              },
+    "changelog":  "v2.2.2 - Crash fix: max-bars KeyError right after first trade; gold M1 pattern prev_close NameError; RR-trail unchanged-SL retcode 10025 spam; updater re-download on version bump; watchdog captures crash stderr"
 }
