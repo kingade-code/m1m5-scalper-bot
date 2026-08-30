@@ -8,7 +8,7 @@ import sys
 import time
 import signal
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 
 # Console/boot logs must be UTF-8: the SIGNAL CONFIRMED log contains emoji
 # (U+1F7E2/U+1F534) and would otherwise raise UnicodeEncodeError when
@@ -106,7 +106,7 @@ def _is_market_open():
     """Check if any configured market is open.
     Forex: opens Sunday 22:00 UTC, closes Friday 22:00 UTC.
     Crypto in SYMBOL_LIST trades 24/7, so weekends stay live for them."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     weekday = now.weekday()  # 0=Mon, 4=Fri, 5=Sat, 6=Sun
 
     if any(s in _CRYPTO_ALWAYS_ON for s in config.SYMBOL_LIST):
@@ -226,7 +226,7 @@ def _tf_name(timeframe):
 def _check_daily_report():
     """Send daily report after market close (22:00 UTC on weekdays)."""
     global _last_report_date
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     today = now.date()
 
     if _last_report_date == today:
@@ -246,7 +246,7 @@ def _check_daily_report():
 def _check_weekly_report():
     """Send weekly report on Friday after market close (22:00 UTC)."""
     global _last_weekly_report
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     today = now.date()
 
     if _last_weekly_report == today:

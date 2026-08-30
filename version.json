@@ -1,5 +1,5 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "min_version": "2.0.0",
   "files": {
     "main.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/main.py",
@@ -18,5 +18,5 @@
     "choch.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/choch.py",
     "updater.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/updater.py"
   },
-  "changelog": "v2.2.0 - Open 1:inf RR step-trailing (3R/5R/7R lock), Exness-compatible order comments, 200-bar entries, per-TF SL buffer"
+  "changelog": "v2.2.1 - Python 3.14 support (auto-selects .venv / system 3.14), utcnow cleanup. v2.2.0 - Open 1:inf RR step-trailing (3R/5R/7R lock), Exness-compatible order comments, 200-bar entries, per-TF SL buffer"
 }

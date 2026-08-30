@@ -24,6 +24,9 @@ Desktop.ini
 bot.lock
 PAUSED
 
+# Virtualenv
+.venv/
+
 # Backtest data (large) - keep out of git
 data/
 download/
