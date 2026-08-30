@@ -77,6 +77,11 @@ def _analyze_pattern(symbol, timeframe):
         logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by trend filter")
         return None
 
+    # Ranging-market filter: reject consolidation (chop) signals
+    if not filters.check_ranging_filter(df, symbol):
+        logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by ranging-market filter")
+        return None
+
     # Momentum filter: RSI + candle body ratio (off = catch-all trend setups)
     if config.USE_MOMENTUM_FILTER and not filters.check_momentum_filter(df, direction):
         logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by momentum filter")
@@ -244,6 +249,11 @@ def _analyze_fibonacci(symbol, timeframe):
     # Trend filter: only trade in direction of H1 trend
     if not filters.check_trend_filter(df, direction, symbol):
         logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by trend filter")
+        return None
+
+    # Ranging-market filter: reject consolidation (chop) signals
+    if not filters.check_ranging_filter(df, symbol):
+        logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by ranging-market filter")
         return None
 
     # CHoCH filter: require change of character confirmation

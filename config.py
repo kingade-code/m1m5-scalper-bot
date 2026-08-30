@@ -124,6 +124,19 @@ MIN_STOP_DISTANCE = 1.0
 # 0 = disabled (backward compatible). Enable via SYMBOL_OVERRIDES.
 RANGE_EDGE_ATR = 0.0
 
+# ─── Ranging-Market Filter ────────────────────────────────────────
+# Reject pattern/fib signals while the market is consolidating. On the
+# signal timeframe's last RANGING_LOOKBACK closed bars the market counts
+# as "ranging" when BOTH:
+#   range width (max high - min low) <= RANGING_MAX_RANGE_ATR * ATR
+#   net move (|first close - last close|) <= RANGING_MAX_MOVE_ATR * ATR
+# A tight range with little net travel = chop, not a tradeable push.
+# 0 disables the width/move check. Enable per-symbol via SYMBOL_OVERRIDES.
+USE_RANGING_FILTER = True
+RANGING_LOOKBACK = 60
+RANGING_MAX_RANGE_ATR = 4.0
+RANGING_MAX_MOVE_ATR = 2.0
+
 # ─── Trailing Stop ────────────────────────────────────────────────
 USE_TRAILING_STOP = True
 TRAILING_START_ATR = 1.0

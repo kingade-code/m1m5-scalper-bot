@@ -77,6 +77,58 @@ def check_trend_filter(df, direction, symbol=None):
     return False
 
 
+def check_ranging_filter(df, symbol=None):
+    """Reject signals while the market is consolidating (ranging).
+
+    On the signal timeframe's last RANGING_LOOKBACK closed bars the
+    market counts as "ranging" when BOTH:
+      - range width (max high - min low) <= RANGING_MAX_RANGE_ATR * ATR
+      - net move (|first close - last close|) <= RANGING_MAX_MOVE_ATR * ATR
+    A tight range with little net travel is chop, not a tradeable push,
+    so trend-continuation set-ups inside it are skipped.
+
+    Setting either threshold to 0 disables that check. Enabled per-symbol
+    via config SYMBOL_OVERRIDES / global USE_RANGING_FILTER.
+
+    Returns True if trading is allowed (market not ranging), False if the
+    market is consolidating.
+    """
+    use = config.get_symbol_param(
+        symbol, "USE_RANGING_FILTER", config.USE_RANGING_FILTER
+    )
+    if not use:
+        return True
+
+    lookback = int(config.get_symbol_param(
+        symbol, "RANGING_LOOKBACK", config.RANGING_LOOKBACK))
+    max_range = float(config.get_symbol_param(
+        symbol, "RANGING_MAX_RANGE_ATR", config.RANGING_MAX_RANGE_ATR))
+    max_move = float(config.get_symbol_param(
+        symbol, "RANGING_MAX_MOVE_ATR", config.RANGING_MAX_MOVE_ATR))
+
+    if lookback <= 0 or (max_range <= 0 and max_move <= 0):
+        return True
+
+    win = df.iloc[-lookback - 1:-1]  # closed bars only, exclude forming bar
+    if len(win) < 20:
+        return True
+
+    atr_period = int(config.get_symbol_param(
+        symbol, "ATR_PERIOD", config.ATR_PERIOD))
+    atr_series = calc_atr(df["high"], df["low"], df["close"], atr_period)
+    ref_atr = atr_series.iloc[-2]
+    if ref_atr <= 0:
+        return True
+
+    range_width = win["high"].max() - win["low"].min()
+    net_move = abs(win["close"].iloc[-1] - win["close"].iloc[0])
+
+    compact = max_range <= 0 or range_width <= max_range * ref_atr
+    flat = max_move <= 0 or net_move <= max_move * ref_atr
+
+    return not (compact and flat)
+
+
 def check_momentum_filter(df, direction):
     """Check momentum confirmation using RSI and candle body ratio.
 
