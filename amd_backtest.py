@@ -80,7 +80,7 @@ def _evaluate_entry(df, i, tick_size, tick_value, balance):
         rew = abs(tp - entry)
         if risk <= 0 or rew / risk < MIN_RR:
             return None
-        risk_amount = min(balance * bt.RISK_PER_TRADE / 100.0, bt.MAX_RISK_DOLLARS)
+        risk_amount = balance * bt.RISK_PER_TRADE / 100.0
         sl_ticks = risk / tick_size
         lot = _lot_size(risk_amount, sl_ticks, tick_value)
         return bt.Trade(symbol="XAUUSD", timeframe=ACTF, direction=direction,

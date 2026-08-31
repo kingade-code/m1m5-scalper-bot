@@ -25,7 +25,6 @@ FIB_ENTRY_HIGH = 0.786
 
 # ─── Risk Management ─────────────────────────────────────────────
 RISK_PERCENT = 3.0
-MAX_RISK_PER_TRADE = 20.0  # Hard cap: max $20 risk per trade
 MAX_POSITIONS = 2
 MAX_POSITIONS_PER_SYMBOL = 1
 MAX_LOT = 0.10  # Cap lot size to prevent risk blowup on tight SL

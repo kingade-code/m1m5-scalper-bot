@@ -16,7 +16,6 @@ import swing_detector
 INITIAL_BALANCE = 500.0
 RISK_PER_TRADE = config.RISK_PERCENT  # 4%
 MAX_LOT = config.MAX_LOT  # 0.10
-MAX_RISK_DOLLARS = config.MAX_RISK_PER_TRADE  # $20
 BACKTEST_SYMBOLS = ["XAUUSD"]
 BACKTEST_TIMEFRAMES = [mt5.TIMEFRAME_M1]
 BACKTEST_MONTHS = 3  # ~3 weeks
@@ -504,9 +503,8 @@ def run_backtest():
                     else:
                         atr_tp = prev_close - tp_dist
 
-                # ─── Lot sizing (4% risk, max $20, max 0.10 lot) ──────
+                # ─── Lot sizing (RISK_PER_TRADE% of balance, max 0.10 lot) ─────
                 risk_amount = balance * RISK_PER_TRADE / 100.0
-                risk_amount = min(risk_amount, MAX_RISK_DOLLARS)
                 sl_ticks = sl_dist / tick_size
                 lot_size = risk_amount / (sl_ticks * tick_value)
                 lot_size = max(0.01, round(lot_size, 2))
@@ -692,7 +690,7 @@ def _print_results(r):
     print(f"  Initial Balance:      ${r['initial_balance']:>14,.2f}")
     print(f"  Final Balance:        ${r['final_balance']:>14,.2f}")
     print(f"  Net P/L:              ${r['total_pnl']:>14,.2f}  ({r['total_pnl_pct']:+.2f}%)")
-    print(f"  Risk Per Trade:       {RISK_PER_TRADE}% | Max Lot: {MAX_LOT} | Max Risk: ${MAX_RISK_DOLLARS}")
+    print(f"  Risk Per Trade:       {RISK_PER_TRADE}% | Max Lot: {MAX_LOT}")
 
     print(f"\n  {'TRADE STATISTICS':^{w-4}}")
     print(f"  {'-'*(w-4)}")
@@ -893,7 +891,7 @@ if __name__ == "__main__":
         pdf.stat_row("Initial Balance", f"${r['initial_balance']:,.2f}")
         pdf.stat_row("Final Balance", f"${r['final_balance']:,.2f}")
         pdf.stat_row("Net P/L", f"${r['total_pnl']:+,.2f} ({r['total_pnl_pct']:+.1f}%)", bold=True)
-        pdf.stat_row("Risk Per Trade", f"{RISK_PER_TRADE}% | Max Lot: {MAX_LOT} | Max Risk: ${MAX_RISK_DOLLARS}")
+        pdf.stat_row("Risk Per Trade", f"{RISK_PER_TRADE}% | Max Lot: {MAX_LOT}")
         pdf.ln(4)
 
         # Trade Statistics
