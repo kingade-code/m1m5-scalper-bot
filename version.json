@@ -18,5 +18,5 @@
     "choch.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/choch.py",
     "updater.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/updater.py"
   },
-  "changelog": "v2.2.4 - Ranging-market filter: reject pattern/fib signals while the market consolidates (range-width + net-move vs ATR over 60 closed bars); enabled for XAUUSD/BTCUSD"
+  "changelog": "v2.2.4 - Risk per trade = RISK_PERCENT (3%) of account balance, removed the  per-trade cap"
 }
