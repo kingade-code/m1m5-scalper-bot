@@ -24,7 +24,7 @@ FIB_ENTRY_LOW = 0.5
 FIB_ENTRY_HIGH = 0.786
 
 # ─── Risk Management ─────────────────────────────────────────────
-RISK_PERCENT = 3.0
+RISK_PERCENT = 1.0
 MAX_POSITIONS = 2
 MAX_POSITIONS_PER_SYMBOL = 1
 MAGIC_NUMBER = 777777
