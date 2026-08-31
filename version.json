@@ -1,5 +1,5 @@
 {
-  "version": "2.2.6",
+  "version": "2.2.7",
   "min_version": "2.0.0",
   "files": {
     "main.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/main.py",
@@ -18,5 +18,5 @@
     "choch.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/choch.py",
     "updater.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/updater.py"
   },
-  "changelog": "v2.2.6 - Risk per trade reduced to RISK_PERCENT = 1% of account balance (was 3%)"
+  "changelog": "v2.2.7 - Pattern detector rejects doji/indecision candles (MIN_BODY_RATIO 0.10): Hammer/Star/Engulf entries need a real body, removing ~30% of false signals"
 }

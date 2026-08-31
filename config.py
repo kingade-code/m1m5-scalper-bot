@@ -108,6 +108,10 @@ USE_MOMENTUM_FILTER = False
 RSI_PERIOD = 14
 RSI_OVERSOLD = 55
 RSI_OVERBOUGHT = 45
+# MIN_BODY_RATIO is ALSO the pattern-detector doji guard: a Hammer/Star/
+# Engulfing signal candle must have a body of at least this fraction of its
+# full height, so doji/indecision candles are not mistaken for entries.
+# (0.10 rejects ~30% of raw detector hits that are near-doji.)
 MIN_BODY_RATIO = 0.10
 
 # ─── ATR ─────────────────────────────────────────────────────────
