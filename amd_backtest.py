@@ -45,7 +45,7 @@ def _lot_size(risk_amount, sl_ticks, tick_value):
         return 0.01
     lot = risk_amount / (sl_ticks * tick_value)
     lot = max(0.01, round(lot, 2))
-    return min(bt.MAX_LOT, lot)
+    return lot
 
 
 def _draw_window(df, i, lookback):

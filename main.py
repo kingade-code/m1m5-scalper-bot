@@ -209,7 +209,7 @@ def _print_banner():
     print("  KINGADE SCALPER BOT")
     print("  EMA10/EMA100 Trend | Pattern+Fib Entry | Wick SL")
     print(f"  RR Ratio: 1:{rr} | Risk: {config.RISK_PERCENT}% of balance")
-    print(f"  Max Positions: {config.MAX_POSITIONS} | Max Lot: {config.MAX_LOT}")
+    print(f"  Max Positions: {config.MAX_POSITIONS}")
     print(f"  Trailing Stop: {config.USE_TRAILING_STOP} | Max Bars: {config.MAX_BARS_IN_TRADE}")
     print(f"  Scan Interval: {config.SCAN_INTERVAL_SECONDS}s")
     print("=" * 60)

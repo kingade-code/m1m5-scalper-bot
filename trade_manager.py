@@ -55,10 +55,6 @@ def calculate_lot_size(symbol, entry_price, sl_price):
     lot_size = round(lot_size / volume_step) * volume_step
     lot_size = round(lot_size, 2)
 
-    if lot_size > config.MAX_LOT:
-        logger.warning(f"Capping lot from {lot_size} to {config.MAX_LOT}")
-        lot_size = config.MAX_LOT
-
     logger.info(
         f"Lot size calc | {symbol} | Balance: {account.balance} | "
         f"Risk: {config.RISK_PERCENT}% ({risk_amount:.2f}) | "

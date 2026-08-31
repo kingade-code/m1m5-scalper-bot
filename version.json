@@ -1,5 +1,5 @@
 {
-  "version": "2.2.4",
+  "version": "2.2.5",
   "min_version": "2.0.0",
   "files": {
     "main.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/main.py",
@@ -18,5 +18,5 @@
     "choch.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/choch.py",
     "updater.py": "https://api.github.com/repos/kingade-code/m1m5-scalper-bot/contents/updater.py"
   },
-  "changelog": "v2.2.4 - Risk per trade = RISK_PERCENT (3%) of account balance, removed the $20 per-trade cap"
+  "changelog": "v2.2.5 - Removed the MAX_LOT cap: lot is sized to risk the full RISK_PERCENT (3%) of account balance per trade"
 }

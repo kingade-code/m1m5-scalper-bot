@@ -27,7 +27,6 @@ FIB_ENTRY_HIGH = 0.786
 RISK_PERCENT = 3.0
 MAX_POSITIONS = 2
 MAX_POSITIONS_PER_SYMBOL = 1
-MAX_LOT = 0.10  # Cap lot size to prevent risk blowup on tight SL
 MAGIC_NUMBER = 777777
 SLIPPAGE = 3
 

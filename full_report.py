@@ -177,7 +177,7 @@ def add_section(E, styles, r, label, note, first):
         styles["SM"]))
     E.append(Paragraph(
         f"Symbol: XAUUSD | Starting balance: ${r['initial_balance']:,.2f} | "
-        f"Risk: {bt.RISK_PER_TRADE}% of balance (lot &le; {bt.MAX_LOT}) | "
+        f"Risk: {bt.RISK_PER_TRADE}% of balance | "
         f"SL wick +/-0.5 | TP {'open (RR-trail)' if getattr(bt, 'USE_OPEN_RR', False) else f'1:{bt.RR_RATIO:.0f}'} | "
         f"Trail {'RR-step 3/5/7(lock~1R)' if getattr(bt, 'USE_OPEN_RR', False) else f'{bt.TRAIL_START_ATR}/{bt.TRAIL_STEP_ATR} ATR'} | "
         f"Max bars {bt.MAX_BARS} | Wick guard {bt.WICK_GUARD} | Range-edge {bt.RANGE_EDGE_ATR} | "
