@@ -142,7 +142,8 @@ def execute_signal(signal):
         order_type=order_type,
         lot_size=lot_size,
         sl=signal["sl"],
-        tp=None if config.USE_OPEN_RR else signal["tp1"],
+        tp=None if config.get_symbol_param(
+            symbol, "USE_OPEN_RR", config.USE_OPEN_RR) else signal["tp1"],
         comment=comment,
     )
 
@@ -243,7 +244,8 @@ def manage_open_positions():
 
         # Calculate trailing stop (RR-step ratchet when open RR is active,
         # otherwise the classic ATR trail)
-        if config.USE_OPEN_RR:
+        if config.get_symbol_param(symbol, "USE_OPEN_RR",
+                                   config.USE_OPEN_RR):
             _manage_rr_step_trail(pos, current_price)
         elif config.USE_TRAILING_STOP and config.get_symbol_param(
                 symbol, "TRAILING_ENABLED", True):
@@ -269,7 +271,14 @@ def _get_current_atr(symbol, timeframe):
 
 
 def _manage_trailing_stop(pos, current_price, atr):
-    """Update trailing stop for a profitable position."""
+    """Update trailing stop for a profitable position.
+
+    The staircase trail only activates once the position has reached a
+    reward of TRAIL_ACTIVATE_R R (1:2 by default). 1R is measured from the
+    original entry-to-stop distance (read from the order comment so it
+    survives stop modifications). This overrides the ATR-based trail_start
+    so the trail never engages before the 1:2 point.
+    """
     ticket = pos.ticket
     symbol = pos.symbol
     direction = "buy" if pos.type == mt5.ORDER_TYPE_BUY else "sell"
@@ -278,6 +287,20 @@ def _manage_trailing_stop(pos, current_price, atr):
 
     trail_start = atr * config.get_symbol_param(symbol, "TRAILING_START_ATR", config.TRAILING_START_ATR)
     trail_step = atr * config.get_symbol_param(symbol, "TRAILING_STEP_ATR", config.TRAILING_STEP_ATR)
+
+    # Activation in units of R (reward:risk). 1R = original stop distance.
+    # Trail only starts after the trade is up this many R. Default 1.0 (1:2).
+    activate_r = float(config.get_symbol_param(
+        symbol, "TRAIL_ACTIVATE_R", config.TRAIL_ACTIVATE_R))
+
+    original_sl = _original_sl_from_comment(pos.comment)
+    if original_sl is not None:
+        sl_distance = abs(entry - original_sl)
+        if sl_distance > 0:
+            # Activate at max(ATR-based start, activate_r * stop-distance)
+            activ_dist = activate_r * sl_distance
+            if activ_dist > trail_start:
+                trail_start = activ_dist
 
     new_sl = None
 
@@ -351,15 +374,21 @@ def _manage_rr_step_trail(pos, current_price):
         return
 
     rr = unrealized / sl_distance
-    if rr < config.RR_TRAIL_START_R:
-        return
 
-    milestone = config.RR_TRAIL_START_R + (
-        (rr - config.RR_TRAIL_START_R) // config.RR_TRAIL_STEP_R
-    ) * config.RR_TRAIL_STEP_R
-    lock_r = milestone - config.RR_TRAIL_LOCK_R
-    if lock_r <= 0:
-        return
+    milestone = rr
+    if config.USE_STAIRCASE_TRAIL:
+        lock_r = config.staircase_lock_r(rr)
+        if lock_r <= 0:
+            return
+    else:
+        if rr < config.RR_TRAIL_START_R:
+            return
+        milestone = config.RR_TRAIL_START_R + (
+            (rr - config.RR_TRAIL_START_R) // config.RR_TRAIL_STEP_R
+        ) * config.RR_TRAIL_STEP_R
+        lock_r = milestone - config.RR_TRAIL_LOCK_R
+        if lock_r <= 0:
+            return
 
     lock_price = entry + lock_r * sl_distance if direction == "buy" else entry - lock_r * sl_distance
     current_sl = pos.sl

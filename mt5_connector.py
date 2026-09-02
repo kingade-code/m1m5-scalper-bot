@@ -143,6 +143,22 @@ def send_market_order(symbol, order_type, lot_size, sl, tp, comment=""):
     sl = round(sl, digits)
     tp = 0.0 if tp is None else round(tp, digits)
 
+    # Enforce the broker's minimum stop distance ("stops level" in points).
+    # Nightly wick-based SLs can fall inside this on BTCUSD and would be
+    # rejected with TRADE_RETCODE_INVALID_STOPS (10016) -> silently missed
+    # entry. Skip such orders explicitly instead of sending an invalid one.
+    stops_level = getattr(symbol_info, "trade_stops_level", 0) or 0
+    if stops_level > 0:
+        min_dist_points = stops_level * point
+        sl_dist = (price - sl) if order_type == mt5.ORDER_TYPE_BUY else (sl - price)
+        if sl > 0 and sl_dist < min_dist_points:
+            logger.warning(
+                f"{symbol}: SL {sl:.{digits}f} inside stops level "
+                f"({stops_level} pts={min_dist_points:.{digits}f} from {price:.{digits}f}). "
+                f"Skipping order to avoid invalid stops."
+            )
+            return None
+
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,

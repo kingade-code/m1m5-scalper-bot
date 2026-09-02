@@ -12,6 +12,7 @@ import filters
 import pattern_detector
 import choch
 import config
+import zones
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,101 @@ def _pip_buffer(symbol, timeframe):
     if value is None:
         value = config.get_symbol_param(symbol, "SL_PIP_BUFFER", 0.5)
     return value
+
+
+def _session_ok(symbol, timeframe, dt_utc=None, pattern=None):
+    """Time-of-day (session) filter.
+
+    Returns True (allowed) unless USE_SESSION_FILTER is on AND (a) the symbol
+    has a non-empty SESSION_ALLOW_HOURS_<TF> list that excludes the entry hour,
+    or (b) the signal's pattern has a per-pattern SESSION_PATTERN_HOURS_<TF>
+    allow-list that excludes the entry hour (TF = M1 or M5). This lets each
+    timeframe apply its own historically profitable hours. The hour is taken
+    as UTC by default; pass a dt to override (tests).
+    """
+    use = config.get_symbol_param(symbol, "USE_SESSION_FILTER", config.USE_SESSION_FILTER)
+    if not use:
+        return True
+    if dt_utc is None:
+        import datetime as _dt
+        now = _dt.datetime.now(_dt.UTC)
+        dt_utc = now
+    hour = dt_utc.hour
+    tf = _tf_name(timeframe)
+
+    # Per-pattern gate: trims weak-pattern hours (e.g. hammer on gold, non-10h
+    # engulf on BTC) while also carving the profitable hours per pattern.
+    # Timeframe-aware: prefer <pattern>_<TF> then fall back to <pattern>.
+    if pattern:
+        pat_map = config.get_symbol_param(
+            symbol, f"SESSION_PATTERN_HOURS_{tf}",
+            config.get_symbol_param(symbol, "SESSION_PATTERN_HOURS",
+                                    config.SESSION_PATTERN_HOURS))
+        if isinstance(pat_map, dict):
+            sym_map = pat_map.get(symbol)
+            pat_allow = (sym_map or {}).get(pattern) if isinstance(sym_map, dict) else None
+            if pat_allow:
+                if hour in pat_allow:
+                    return True
+                logger.debug(f"{symbol} {tf} {pattern}: rejected by "
+                             f"pattern session filter (hour {hour:02d} not allowed)")
+                return False
+
+    # Symbol-level gate (applies to all patterns / non-pattern entries).
+    allow = config.get_symbol_param(
+        symbol, f"SESSION_ALLOW_HOURS_{tf}",
+        config.get_symbol_param(symbol, "SESSION_ALLOW_HOURS", config.SESSION_ALLOW_HOURS))
+    if not allow:
+        return True
+    if hour in allow:
+        return True
+    logger.debug(f"{symbol} {tf}: rejected by session filter "
+                 f"(hour {hour:02d} not in {len(allow)} allowed)")
+    return False
+
+
+def _check_zone_filter(symbol, df, timeframe, direction, current_price):
+    """Demand/Supply zone filter.
+
+    Fetches recent bars (ZONE_LOOKBACK) on the signal timeframe, detects
+    demand/supply zones, then requires:
+      - bullish signal  -> price at/above a nearby DEMAND (support) zone
+      - bearish signal  -> price at/below a nearby SUPPLY (resistance) zone
+    within ZONE_MAX_DIST_ATR*ATR of the zone band.
+
+    Returns True (allowed) or False (rejected).
+    """
+    use = config.get_symbol_param(symbol, "USE_ZONE_FILTER", config.USE_ZONE_FILTER)
+    if not use:
+        return True
+    max_dist = float(config.get_symbol_param(symbol, "ZONE_MAX_DIST_ATR", 0))
+    if max_dist <= 0:
+        return True
+    lookback = int(config.get_symbol_param(symbol, "ZONE_LOOKBACK", config.ZONE_LOOKBACK))
+
+    zone_df = mt5c.get_ohlc(symbol, timeframe, lookback)
+    if zone_df is None or len(zone_df) < 60:
+        return True
+
+    zone, dist, avg_atr = zones.get_zone_context(
+        symbol, zone_df, direction, current_price)
+    if zone is None or avg_atr <= 0:
+        logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by zone filter (no "
+                     f"{'demand' if direction == 'bullish' else 'supply'} zone)")
+        return False
+    if dist > max_dist * avg_atr:
+        logger.debug(
+            f"{symbol} {_tf_name(timeframe)}: rejected by zone filter "
+            f"(price {current_price:.2f} is {dist:.2f} from "
+            f"{'demand' if direction == 'bullish' else 'supply'} zone "
+            f"{zone['bottom']:.2f}-{zone['top']:.2f}; max "
+            f"{max_dist}*ATR={max_dist * avg_atr:.2f})")
+        return False
+    logger.debug(
+        f"{symbol} {_tf_name(timeframe)}: zone filter OK "
+        f"({'demand' if direction == 'bullish' else 'supply'} zone "
+        f"{zone['bottom']:.2f}-{zone['top']:.2f}, dist {dist:.2f})")
+    return True
 
 
 def analyze_symbol(symbol, timeframe):
@@ -61,6 +157,11 @@ def _analyze_pattern(symbol, timeframe):
     # Convert int to string for internal use
     direction = "bullish" if raw_direction == 1 else "bearish"
     signal_direction = "buy" if raw_direction == 1 else "sell"
+    pattern_name = pattern_detector.detect_pattern_name(df, symbol=symbol)
+
+    # Time-of-day (session) filter: only enter in historically profitable hours
+    if not _session_ok(symbol, timeframe, pattern=pattern_name):
+        return None
 
     # Use second-to-last candle (last closed)
     prev_bar = df.iloc[-2]
@@ -80,6 +181,12 @@ def _analyze_pattern(symbol, timeframe):
     # Ranging-market filter: reject consolidation (chop) signals
     if not filters.check_ranging_filter(df, symbol):
         logger.debug(f"{symbol} {_tf_name(timeframe)}: rejected by ranging-market filter")
+        return None
+
+    # Demand/Supply zone filter: bullish needs support (demand) nearby,
+    # bearish needs resistance (supply) nearby.
+    if config.get_symbol_param(symbol, "USE_ZONE_FILTER", config.USE_ZONE_FILTER) \
+            and not _check_zone_filter(symbol, df, timeframe, direction, current_price):
         return None
 
     # Momentum filter: RSI + candle body ratio (off = catch-all trend setups)
@@ -116,7 +223,8 @@ def _analyze_pattern(symbol, timeframe):
         return None
 
     # TP based on SL distance * RR ratio (open 1:inf when USE_OPEN_RR)
-    if config.USE_OPEN_RR:
+    if config.get_symbol_param(symbol, "USE_OPEN_RR",
+                               config.USE_OPEN_RR):
         atr_tp = float("inf") if direction == "bullish" else float("-inf")
     else:
         rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 2.5)
@@ -220,6 +328,10 @@ def _analyze_fibonacci(symbol, timeframe):
     sh_price = move["swing_high"][1]
     sl_price = move["swing_low"][1]
 
+    # Time-of-day (session) filter: only enter in historically profitable hours
+    if not _session_ok(symbol, timeframe):
+        return None
+
     # Calculate Fibonacci levels
     levels = fibonacci.calculate_retracement_levels(sh_price, sl_price, direction)
     if levels is None:
@@ -297,7 +409,8 @@ def _analyze_fibonacci(symbol, timeframe):
         return None
 
     # TP based on SL distance * RR ratio (open 1:inf when USE_OPEN_RR)
-    if config.USE_OPEN_RR:
+    if config.get_symbol_param(symbol, "USE_OPEN_RR",
+                               config.USE_OPEN_RR):
         atr_tp = float("inf") if direction == "bullish" else float("-inf")
     else:
         rr_ratio = config.get_symbol_param(symbol, "RR_RATIO", 4.0)

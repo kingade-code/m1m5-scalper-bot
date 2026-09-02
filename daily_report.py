@@ -45,8 +45,28 @@ MEDIUM_GRAY = RGBColor(0x99, 0x99, 0x99)
 logger = logging.getLogger(__name__)
 
 
+def _order_map():
+    """Map closed order ticket -> (sl, tp, price_open, time_done) from MT5
+    history orders, so per-trade SL/TP can be reported. Returns dict."""
+    order_map = {}
+    orders = mt5.history_orders_get(0, int(datetime.now(timezone.utc).timestamp()))
+    if not orders:
+        return order_map
+    for o in orders:
+        if getattr(o, "magic", 0) == config.MAGIC_NUMBER:
+            order_map[o.ticket] = {
+                "sl": o.sl,
+                "tp": o.tp,
+                "price_open": o.price_open,
+                "type": o.type,  # 0=BUY, 1=SELL (ORDER_TYPE_*)
+                "time_setup": o.time_setup,
+                "time_done": o.time_done,
+            }
+    return order_map
+
+
 def get_today_trades():
-    """Get all trades opened today from MT5 deal history.
+    """Get all trades closed today from MT5 deal history.
     MT5 timestamps are UTC, so the day window must be UTC-based."""
     now = datetime.now(timezone.utc)
     today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
@@ -60,8 +80,11 @@ def get_today_trades():
 
     bot_deals = [d for d in deals if d.magic == config.MAGIC_NUMBER]
 
+    o_map = _order_map()
+
     trades = []
     for d in bot_deals:
+        order = o_map.get(d.order, {})
         trades.append({
             "ticket": d.order,
             "time": datetime.fromtimestamp(d.time),
@@ -74,9 +97,69 @@ def get_today_trades():
             "commission": d.commission,
             "net_profit": d.profit + d.swap + d.commission,
             "comment": d.comment,
+            "sl": order.get("sl"),
+            "tp": order.get("tp"),
+            "entry": order.get("price_open"),
         })
 
     return trades
+
+
+_TICK_CACHE = {}
+
+
+def _one_r_cost(tr):
+    """Dollar value of 1R for a trade (the stop distance from entry), computed
+    from symbol tick value/size/volume. Returns float $, or None if unavailable."""
+    try:
+        sym = tr.get("symbol")
+        entry = tr.get("entry")
+        sl = tr.get("sl")
+        vol = tr.get("volume")
+        if entry is None or sl is None or entry == 0 or sl == 0:
+            return None
+        info = _TICK_CACHE.get(sym)
+        if info is None:
+            info = mt5.symbol_info(sym)
+            if info is None:
+                return None
+            _TICK_CACHE[sym] = (info.trade_tick_value, info.trade_tick_size)
+        tick_value, tick_size = _TICK_CACHE[sym]
+        if not tick_size or tick_size == 0:
+            return None
+        stop_points = abs(entry - sl) / tick_size  # ticks between entry and SL
+        one_r = stop_points * tick_value * (vol or 0.0)
+        return one_r if one_r > 0 else None
+    except Exception:
+        return None
+
+
+def _trade_rr(tr):
+    """Return the realized R:R multiple for a trade, or None if it cannot be
+    computed (no SL in order history). 1R = the dollar stop distance."""
+    one_r = _one_r_cost(tr)
+    if one_r is None or one_r <= 0:
+        return None
+    return (tr.get("net_profit") or 0.0) / one_r
+
+
+def _daily_drawdown(trades):
+    """Compute intraday max drawdown % of daily P/L curve (peak-to-trough on
+    cumulative net profit). Returns (max_dd_dollars, max_dd_percent_of_balance)."""
+    if not trades:
+        return 0.0, 0.0
+    # Sort chronologically (they are already in history order).
+    cum = 0.0
+    peak = 0.0
+    max_dd = 0.0
+    for tr in trades:
+        cum += tr["net_profit"]
+        if cum > peak:
+            peak = cum
+        dd = peak - cum
+        if dd > max_dd:
+            max_dd = dd
+    return max_dd
 
 
 def get_account_snapshot():
@@ -116,6 +199,12 @@ def generate_pdf(trades, account, output_path):
     wins = [t for t in trades if t["net_profit"] >= 0]
     losses = [t for t in trades if t["net_profit"] < 0]
     total_pnl = sum(t["net_profit"] for t in trades)
+    gross_profit = sum(t["net_profit"] for t in wins) if wins else 0
+    gross_loss = abs(sum(t["net_profit"] for t in losses)) if losses else 0
+    pf = gross_profit / gross_loss if gross_loss > 0 else 0.0
+    max_dd = _daily_drawdown(trades)
+    rr_vals = [r for r in (_trade_rr(t) for t in trades) if r is not None]
+    avg_rr = sum(rr_vals) / len(rr_vals) if rr_vals else 0.0
 
     summary = [
         ["DAILY SUMMARY", "", "", ""],
@@ -123,7 +212,9 @@ def generate_pdf(trades, account, output_path):
         ["Balance", f"${account.get('balance', 0):,.2f}", "Equity", f"${account.get('equity', 0):,.2f}"],
         ["Daily P/L", f"${total_pnl:+,.2f}", "Win Rate", f"{len(wins)/len(trades)*100:.0f}%" if trades else "0%"],
         ["Wins", str(len(wins)), "Losses", str(len(losses))],
-        ["Avg Win", f"${np.mean([t['net_profit'] for t in wins]):+,.2f}" if wins else "$0", "Avg Loss", f"${np.mean([t['net_profit'] for t in losses]):+,.2f}" if losses else "$0"],
+        ["Profit Factor", f"{pf:.2f}", "Max Drawdown", f"${max_dd:,.2f}"],
+        ["Avg R:R", f"{avg_rr:.2f}", "Avg Win", f"${np.mean([t['net_profit'] for t in wins]):+,.2f}" if wins else "$0"],
+        ["Avg Loss", f"${np.mean([t['net_profit'] for t in losses]):+,.2f}" if losses else "$0", "", ""],
     ]
 
     t = Table(summary, colWidths=[100, 140, 100, 140])
@@ -151,22 +242,26 @@ def generate_pdf(trades, account, output_path):
         elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc")))
         elements.append(Spacer(1, 4))
 
-        log_header = ["#", "TIME", "SYMBOL", "TYPE", "ENTRY", "VOLUME", "P/L", "RESULT"]
+        log_header = ["#", "TIME", "SYMBOL", "TYPE", "ENTRY", "SL", "TP", "VOLUME", "R:R", "P/L", "RESULT"]
         log_rows = [log_header]
         for i, tr in enumerate(trades, 1):
             result = "WIN" if tr["net_profit"] >= 0 else "LOSS"
+            rr = _trade_rr(tr)
             log_rows.append([
                 str(i),
                 tr["time"].strftime("%H:%M"),
                 tr["symbol"],
                 tr["type"],
                 f"{tr['price']:.2f}",
+                "-" if tr.get("sl") is None else f"{tr['sl']:.2f}",
+                "-" if tr.get("tp") is None else f"{tr['tp']:.2f}",
                 f"{tr['volume']:.2f}",
+                "-" if rr is None else f"{rr:+.2f}R",
                 f"${tr['net_profit']:+,.2f}",
                 result,
             ])
 
-        t2 = Table(log_rows, colWidths=[30, 55, 60, 40, 70, 55, 70, 50])
+        t2 = Table(log_rows, colWidths=[25, 50, 55, 35, 60, 60, 60, 45, 45, 65, 45])
         t2.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f3460")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -283,26 +378,31 @@ def generate_pptx(trades, account, output_path):
 
     if trades:
         n_rows = len(trades) + 1
-        tbl = slide2.shapes.add_table(n_rows, 8, Inches(0.5), Inches(1.2), Inches(12.3), Inches(5.5))
+        tbl = slide2.shapes.add_table(n_rows, 11, Inches(0.3), Inches(1.1), Inches(12.7), Inches(5.9))
         table = tbl.table
 
-        headers = ["#", "TIME", "SYMBOL", "TYPE", "ENTRY", "VOLUME", "P/L", "RESULT"]
+        headers = ["#", "TIME", "SYMBOL", "TYPE", "ENTRY", "SL", "TP", "VOLUME", "R:R", "P/L", "RESULT"]
         for j, h in enumerate(headers):
             cell = table.cell(0, j)
             cell.text = h
             cell.fill.solid()
             cell.fill.fore_color.rgb = NAVY
             for p in cell.text_frame.paragraphs:
-                p.font.size = Pt(10)
+                p.font.size = Pt(9)
                 p.font.color.rgb = WHITE
                 p.font.bold = True
                 p.font.name = "Calibri"
                 p.alignment = PP_ALIGN.CENTER
 
         for i, tr in enumerate(trades, 1):
+            rr = _trade_rr(tr)
             row_data = [
                 str(i), tr["time"].strftime("%H:%M"), tr["symbol"], tr["type"],
-                f"{tr['price']:.2f}", f"{tr['volume']:.2f}",
+                f"{tr['price']:.2f}",
+                "-" if tr.get("sl") is None else f"{tr['sl']:.2f}",
+                "-" if tr.get("tp") is None else f"{tr['tp']:.2f}",
+                f"{tr['volume']:.2f}",
+                "-" if rr is None else f"{rr:+.2f}R",
                 f"${tr['net_profit']:+,.2f}", "WIN" if tr["net_profit"] >= 0 else "LOSS",
             ]
             for j, val in enumerate(row_data):
@@ -312,18 +412,18 @@ def generate_pptx(trades, account, output_path):
                 cell.fill.solid()
                 cell.fill.fore_color.rgb = bg
                 for p in cell.text_frame.paragraphs:
-                    p.font.size = Pt(9)
+                    p.font.size = Pt(8)
                     p.font.color.rgb = WHITE
                     p.font.name = "Calibri"
                     p.alignment = PP_ALIGN.CENTER
-                    if j == 6:  # P/L column
+                    if j == 9:  # P/L column
                         p.font.color.rgb = GREEN if tr["net_profit"] >= 0 else RED
                         p.font.bold = True
-                    if j == 7:  # Result column
+                    if j == 10:  # Result column
                         p.font.color.rgb = GREEN if tr["net_profit"] >= 0 else RED
 
         # Column widths
-        widths = [Inches(0.5), Inches(1.2), Inches(1.5), Inches(1.0), Inches(1.8), Inches(1.2), Inches(1.8), Inches(1.3)]
+        widths = [Inches(0.4), Inches(1.0), Inches(1.2), Inches(0.9), Inches(1.4), Inches(1.3), Inches(1.3), Inches(1.0), Inches(1.1), Inches(1.5), Inches(1.2)]
         for j, w in enumerate(widths):
             table.columns[j].width = w
     else:
@@ -363,13 +463,28 @@ def generate_pptx(trades, account, output_path):
     p.font.name = "Calibri"
     p.alignment = PP_ALIGN.CENTER
 
-    tb2 = slide3.shapes.add_textbox(Inches(1), Inches(4.6), Inches(11.33), Inches(0.5))
+    tb2 = slide3.shapes.add_textbox(Inches(1), Inches(4.6), Inches(11.33), Inches(1.4))
     p2 = tb2.text_frame.paragraphs[0]
     p2.text = f"Balance: ${account.get('balance', 0):,.2f} | Equity: ${account.get('equity', 0):,.2f}"
     p2.font.size = Pt(14)
     p2.font.color.rgb = MEDIUM_GRAY
     p2.font.name = "Calibri"
     p2.alignment = PP_ALIGN.CENTER
+
+    gross_profit_d = sum(t["net_profit"] for t in wins) if wins else 0
+    gross_loss_d = abs(sum(t["net_profit"] for t in losses)) if losses else 0
+    pf_d = gross_profit_d / gross_loss_d if gross_loss_d > 0 else 0.0
+    max_dd_d = _daily_drawdown(trades)
+    rr_vals_d = [r for r in (_trade_rr(t) for t in trades) if r is not None]
+    avg_rr_d = sum(rr_vals_d) / len(rr_vals_d) if rr_vals_d else 0.0
+
+    par = tb2.text_frame.add_paragraph()
+    par.text = (f"Profit Factor: {pf_d:.2f} | Max DD: ${max_dd_d:,.2f} | "
+                f"Avg R:R: {avg_rr_d:.2f} | Win Rate: {len(wins)/len(trades)*100:.0f}%" if trades else "Profit Factor: 0.00")
+    par.font.size = Pt(13)
+    par.font.color.rgb = GOLD
+    par.font.name = "Calibri"
+    par.alignment = PP_ALIGN.CENTER
 
     prs.save(output_path)
     return output_path
@@ -404,12 +519,23 @@ def generate_and_send_daily_report():
     total_pnl = sum(t["net_profit"] for t in trades)
     wins = [t for t in trades if t["net_profit"] >= 0]
     losses = [t for t in trades if t["net_profit"] < 0]
+    gross_profit = sum(t["net_profit"] for t in wins) if wins else 0
+    gross_loss = abs(sum(t["net_profit"] for t in losses)) if losses else 0
+    pf = gross_profit / gross_loss if gross_loss > 0 else 0.0
+    max_dd = _daily_drawdown(trades)
+    rr_vals = [r for r in (_trade_rr(t) for t in trades) if r is not None]
+    avg_rr = sum(rr_vals) / len(rr_vals) if rr_vals else 0.0
 
+    wr_str = f"{len(wins)/len(trades)*100:.1f}%" if trades else "0%"
     summary = (
         f"<b>DAILY REPORT - {now.strftime('%d %b %Y')}</b>\n\n"
         f"<b>Trades:</b> {len(trades)}\n"
         f"<b>Wins:</b> {len(wins)} | <b>Losses:</b> {len(losses)}\n"
+        f"<b>Win Rate:</b> {wr_str}\n"
+        f"<b>Profit Factor:</b> {pf:.2f}\n"
+        f"<b>Avg R:R:</b> {avg_rr:+.2f}\n"
         f"<b>Daily P/L:</b> ${total_pnl:+,.2f}\n"
+        f"<b>Max Drawdown:</b> ${max_dd:,.2f}\n"
         f"<b>Balance:</b> ${account.get('balance', 0):,.2f}\n\n"
         f"<i>Sending reports below...</i>"
     )

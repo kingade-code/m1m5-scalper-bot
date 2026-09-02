@@ -1,257 +1,231 @@
-import requests
-from fpdf import FPDF
+# Copyright (c) 2026 Kingade Forex. All rights reserved.
+# This software is licensed intellectual property.
+# Unauthorized copying, modification, distribution, or use is strictly prohibited.
+# A valid license key (KNG-XXXX-XXXX-XXXX) is required to run this bot.
+# Purchase at: https://sellix.io/kingadebot
+"""Full backtest PDF report generator (reportlab / navy theme).
+
+Matches the shared document format used by daily_report.py, report.py and
+full_report.py: same brand colors, table styling and section headers.
+
+Consumes a results dict with the same shape produced by backtest_m1_trend.py.
+No hardcoded results and no hardcoded Telegram token; sends via telegram_notifier.
+"""
+import sys
+import os
+import json
 from datetime import datetime
 
-TELEGRAM_TOKEN = "8803542513:AAF4TtMmcWIHAj88xNxsjHH8NYxqHMUfwag"
-CHAT_ID = "6412335897"
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, HRFlowable,
+)
+from reportlab.graphics.shapes import Drawing, Rect
+from reportlab.graphics.charts.lineplots import LinePlot
 
-# Results from the backtest we already ran
-R = {
-    "initial_balance": 1000.0,
-    "final_balance": 57091.32,
-    "total_pnl": 56091.32,
-    "total_pnl_pct": 5609.13,
-    "total_trades": 10908,
-    "wins": 8410,
-    "losses": 2498,
-    "win_rate": 77.1,
-    "profit_factor": 1.96,
-    "avg_rr": 0.44,
-    "expectancy": 5.14,
-    "avg_bars_held": 5.4,
-    "max_dd": 261.98,
-    "max_dd_pct": 10.30,
-    "sharpe": 4.43,
-    "recovery": 214.10,
-    "calmar": 544.84,
-    "avg_win": 13.64,
-    "avg_loss": -23.48,
-    "largest_win": 130.98,
-    "largest_loss": -228.41,
-    "tf_stats": {
-        "M1": {"trades": 6594, "wins": 5105, "pnl": 31670.52},
-        "M15": {"trades": 4314, "wins": 3305, "pnl": 24420.80},
-    },
-    "sym_stats": {
-        "GBPUSD": {"trades": 4002, "wins": 3082, "pnl": 21482.42},
-        "AUDUSD": {"trades": 4105, "wins": 3165, "pnl": 19194.15},
-        "XAUUSD": {"trades": 2801, "wins": 2163, "pnl": 15414.74},
-    },
-    "monthly": {
-        "2026-02": 1643.70,
-        "2026-03": 2814.98,
-        "2026-04": 3022.34,
-        "2026-05": 4124.58,
-        "2026-06": 4991.47,
-        "2026-07": 4852.55,
-        "2026-08": 34641.70,
-    },
-}
+BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE)
+import config
+
+# ─── Shared brand palette (must match daily_report / report / full_report) ───
+NAVY = "#16213e"
+BLUE = "#0f3460"
+DARK = "#1a1a2e"
+GREEN = "#27ae60"
+RED = "#e74c3c"
 
 
-class PDF(FPDF):
-    def header(self):
-        self.set_font("Helvetica", "B", 22)
-        self.set_text_color(255, 140, 0)
-        self.cell(0, 14, "KINGADE SCALPER BOT", new_x="LMARGIN", new_y="NEXT", align="C")
-        self.set_font("Helvetica", "", 12)
-        self.set_text_color(100, 100, 100)
-        self.cell(0, 7, "Backtest Performance Report", new_x="LMARGIN", new_y="NEXT", align="C")
-        self.cell(0, 5, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT", align="C")
-        self.ln(4)
-        self.set_draw_color(255, 140, 0)
-        self.set_line_width(0.8)
-        self.line(10, self.get_y(), 200, self.get_y())
-        self.ln(6)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font("Helvetica", "I", 8)
-        self.set_text_color(150, 150, 150)
-        self.cell(0, 10, f"Kingade Scalper Bot | Page {self.page_no()}", align="C")
-
-    def section_title(self, title):
-        self.set_font("Helvetica", "B", 14)
-        self.set_text_color(255, 140, 0)
-        self.cell(0, 10, title, new_x="LMARGIN", new_y="NEXT")
-        self.set_draw_color(255, 140, 0)
-        self.set_line_width(0.4)
-        self.line(10, self.get_y(), 200, self.get_y())
-        self.ln(4)
-
-    def stat(self, label, value, bold=False):
-        self.set_font("Helvetica", "", 10)
-        self.set_text_color(60, 60, 60)
-        self.cell(95, 7, label)
-        s = "B" if bold else ""
-        self.set_font("Helvetica", s, 10)
-        self.set_text_color(30, 30, 30)
-        self.cell(0, 7, str(value), new_x="LMARGIN", new_y="NEXT")
-
-    def big_stat(self, label, value):
-        self.set_font("Helvetica", "B", 12)
-        self.set_text_color(60, 60, 60)
-        self.cell(95, 9, label)
-        self.set_font("Helvetica", "B", 12)
-        self.set_text_color(0, 150, 0) if "+" in str(value) or float(str(value).replace("$","").replace(",","").replace("%","").replace("(","").replace(")","").replace("+","")) > 0 else self.set_text_color(200,0,0)
-        self.cell(0, 9, str(value), new_x="LMARGIN", new_y="NEXT")
-
-    def table_header(self, cols, widths):
-        self.set_font("Helvetica", "B", 9)
-        self.set_fill_color(50, 50, 50)
-        self.set_text_color(255, 255, 255)
-        for i, c in enumerate(cols):
-            self.cell(widths[i], 8, c, border=0, fill=True, align="C")
-        self.ln()
-
-    def table_row(self, cols, widths, alt=False):
-        self.set_font("Helvetica", "", 9)
-        self.set_fill_color(245, 245, 245) if alt else self.set_fill_color(255, 255, 255)
-        self.set_text_color(40, 40, 40)
-        for i, c in enumerate(cols):
-            a = "L" if i == 0 else "R"
-            self.cell(widths[i], 7, str(c), border=0, fill=True, align=a)
-        self.ln()
+def get_styles():
+    s = getSampleStyleSheet()
+    s.add(ParagraphStyle("T", parent=s["Title"], fontSize=22, spaceAfter=4,
+                         textColor=colors.HexColor(DARK)))
+    s.add(ParagraphStyle("ST", parent=s["Normal"], fontSize=11,
+                         textColor=colors.HexColor("#555555"), spaceAfter=10))
+    s.add(ParagraphStyle("SH", parent=s["Heading2"], fontSize=14, spaceBefore=14,
+                         spaceAfter=6, textColor=colors.HexColor(NAVY)))
+    s.add(ParagraphStyle("SUB", parent=s["Heading3"], fontSize=11, spaceBefore=10,
+                         spaceAfter=4, textColor=colors.HexColor(BLUE)))
+    s.add(ParagraphStyle("SM", parent=s["Normal"], fontSize=8, textColor=colors.grey))
+    return s
 
 
-def generate_pdf():
-    pdf = PDF()
-    pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.add_page()
+def _table(data, widths, header_bg=DARK, size=8):
+    t = Table(data, colWidths=widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(header_bg)),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), size),
+        ("FONTSIZE", (0, 1), (-1, -1), size),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+         [colors.white, colors.HexColor("#f5f5f5")]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    return t
 
-    # Config
-    pdf.section_title("CONFIGURATION")
-    pdf.stat("Strategy", "Hammer/Star (M1) + Fibonacci Zone (M15)")
-    pdf.stat("Entry Mode", "No filters - pure pattern/zone entry")
-    pdf.stat("Risk Per Trade", "4.0%")
-    pdf.stat("ATR SL Multiplier", "XAUUSD: 2.0x | Forex: 4.0x")
-    pdf.stat("ATR TP Multiplier", "XAUUSD: 2.5x | Forex: 5.0x")
-    pdf.stat("Trailing Stop", "Start: 1.0x ATR | Step: 0.15x ATR")
-    pdf.stat("Trend Filter", "DISABLED")
-    pdf.stat("Momentum Filter", "DISABLED")
-    pdf.stat("Confirmation", "DISABLED")
-    pdf.stat("Symbols", "XAUUSD, GBPUSD, AUDUSD")
-    pdf.stat("Timeframes", "M1 (Gold), M15 (Forex)")
-    pdf.stat("Backtest Period", "6 Months (Feb - Aug 2026)")
-    pdf.ln(5)
 
-    # Account
-    pdf.section_title("ACCOUNT SUMMARY")
-    pdf.big_stat("Initial Balance", f"${R['initial_balance']:,.2f}")
-    pdf.big_stat("Final Balance", f"${R['final_balance']:,.2f}")
-    pdf.big_stat("Net Profit/Loss", f"${R['total_pnl']:,.2f} (+{R['total_pnl_pct']:.2f}%)")
-    pdf.ln(5)
+def _summary_table(R, styles):
+    data = [
+        ["ACCOUNT SUMMARY", "", "", ""],
+        ["Initial Balance", f"${R.get('initial_balance', 0):,.2f}",
+         "Total Trades", str(R.get("total_trades", 0))],
+        ["Final Balance", f"${R.get('final_balance', 0):,.2f}",
+         "Winning Trades", str(R.get("wins", 0))],
+        ["Net P/L", f"${R.get('total_pnl', 0):,.2f} ({R.get('total_pnl_pct', 0):+.1f}%)",
+         "Losing Trades", str(R.get("losses", 0))],
+        ["Risk Per Trade", f"{config.RISK_PERCENT}%",
+         "Win Rate", f"{R.get('win_rate', 0):.1f}%"],
+        ["", "", "Profit Factor", f"{R.get('profit_factor', 0):.2f}"],
+        ["", "", "Avg R:R", f"{R.get('avg_rr', 0):.2f}"],
+    ]
+    return _table(data, [120, 130, 120, 130], NAVY, 9)
 
-    # Trade Stats
-    pdf.section_title("TRADE STATISTICS")
-    pdf.stat("Total Trades", f"{R['total_trades']:,}")
-    pdf.stat("Winning Trades", f"{R['wins']:,}")
-    pdf.stat("Losing Trades", f"{R['losses']:,}")
-    pdf.stat("Win Rate", f"{R['win_rate']:.1f}%", bold=True)
-    pdf.stat("Profit Factor", f"{R['profit_factor']:.2f}", bold=True)
-    pdf.stat("Average R:R", f"{R['avg_rr']:.2f}")
-    pdf.stat("Expectancy/Trade", f"${R['expectancy']:.2f}")
-    pdf.stat("Avg Bars Held", f"{R['avg_bars_held']:.1f}")
-    pdf.ln(5)
 
-    # Risk
-    pdf.section_title("RISK METRICS")
-    pdf.stat("Max Drawdown", f"${R['max_dd']:,.2f}")
-    pdf.stat("Max Drawdown %", f"{R['max_dd_pct']:.2f}%", bold=True)
-    pdf.stat("Sharpe Ratio", f"{R['sharpe']:.2f}", bold=True)
-    pdf.stat("Recovery Factor", f"{R['recovery']:.2f}")
-    pdf.stat("Calmar Ratio", f"{R['calmar']:.2f}")
-    pdf.ln(5)
+def _risk_table(R):
+    data = [
+        ["RISK METRICS", "", "", ""],
+        ["Max Drawdown", f"${R.get('max_dd', 0):,.2f}",
+         "Max Drawdown %", f"{R.get('max_dd_pct', 0):.2f}%"],
+        ["Sharpe Ratio", f"{R.get('sharpe', 0):.2f}",
+         "Calmar Ratio", f"{R.get('calmar', 0):.2f}"],
+        ["Recovery Factor", f"{R.get('recovery', 0):.2f}",
+         "Expectancy/Trade", f"${R.get('expectancy', 0):,.2f}"],
+        ["Avg Win", f"${R.get('avg_win', 0):,.2f}",
+         "Avg Loss", f"${R.get('avg_loss', 0):,.2f}"],
+        ["Largest Win", f"${R.get('largest_win', 0):,.2f}",
+         "Largest Loss", f"${R.get('largest_loss', 0):,.2f}"],
+    ]
+    return _table(data, [120, 130, 120, 130], BLUE, 9)
 
-    # Win/Loss
-    pdf.section_title("WIN / LOSS BREAKDOWN")
-    pdf.stat("Average Win", f"${R['avg_win']:,.2f}")
-    pdf.stat("Average Loss", f"${R['avg_loss']:,.2f}")
-    pdf.stat("Largest Win", f"${R['largest_win']:,.2f}")
-    pdf.stat("Largest Loss", f"${R['largest_loss']:,.2f}")
-    pdf.ln(5)
 
-    # By Timeframe
-    pdf.section_title("PERFORMANCE BY TIMEFRAME")
-    w = [45, 40, 40, 65]
-    pdf.table_header(["Timeframe", "Trades", "Win Rate", "P/L"], w)
-    for i, (tf, s) in enumerate(sorted(R["tf_stats"].items())):
-        wr = s["wins"] / s["trades"] * 100
-        pdf.table_row([tf, str(s["trades"]), f"{wr:.1f}%", f"${s['pnl']:,.2f}"], w, alt=(i % 2 == 0))
-    pdf.ln(5)
+def _by_table(title, key_name, data, sort_pnl=False):
+    if not data:
+        return []
+    rows = [[key_name.upper(), "TRADES", "WINS", "WIN RATE", "P/L"]]
+    items = sorted(data.items())
+    if sort_pnl:
+        items = sorted(data.items(), key=lambda kv: kv[1].get("pnl", 0), reverse=True)
+    for name, s in items:
+        trades = s.get("trades", 0)
+        wins = s.get("wins", 0)
+        wr = (wins / trades * 100) if trades else 0
+        rows.append([str(name), str(trades), str(wins), f"{wr:.1f}%", f"${s.get('pnl', 0):,.2f}"])
+    out = []
+    out.append(Paragraph(title, get_styles()["SH"]))
+    out.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc")))
+    out.append(Spacer(1, 4))
+    out.append(_table(rows, [110, 70, 60, 90, 110], DARK, 8))
+    out.append(Spacer(1, 10))
+    return out
 
-    # By Symbol
-    pdf.section_title("PERFORMANCE BY SYMBOL")
-    w = [45, 40, 40, 65]
-    pdf.table_header(["Symbol", "Trades", "Win Rate", "P/L"], w)
-    for i, (sym, s) in enumerate(sorted(R["sym_stats"].items(), key=lambda x: x[1]["pnl"], reverse=True)):
-        wr = s["wins"] / s["trades"] * 100
-        pdf.table_row([sym, str(s["trades"]), f"{wr:.1f}%", f"${s['pnl']:,.2f}"], w, alt=(i % 2 == 0))
-    pdf.ln(5)
 
-    # Monthly
-    pdf.section_title("MONTHLY PROFIT / LOSS")
-    w = [50, 65, 75]
-    pdf.table_header(["Month", "P/L", "Cumulative"], w)
+def _monthly_table(R):
+    monthly = R.get("monthly") or {}
+    if not monthly:
+        return Spacer(1, 1)
+    rows = [["MONTH", "P/L", "CUMULATIVE"]]
     cum = 0
-    for i, (m, pnl) in enumerate(sorted(R["monthly"].items())):
+    for m, pnl in sorted(monthly.items(), key=lambda kv: kv[0]):
+        if isinstance(pnl, dict):
+            pnl = pnl.get("pnl", 0) if "pnl" in pnl else pnl.get("total", 0)
         cum += pnl
-        pdf.table_row([m, f"${pnl:,.2f}", f"${cum:,.2f}"], w, alt=(i % 2 == 0))
-    pdf.ln(5)
-
-    # Equity curve
-    pdf.section_title("EQUITY CURVE")
-    vals = [1000, 2644, 5459, 8481, 12606, 17597, 22450, 57091]
-    mn, mx = min(vals), max(vals)
-    h = 12
-    pdf.set_font("Courier", "", 7)
-    pdf.set_text_color(40, 40, 40)
-    for row in range(h, -1, -1):
-        thresh = mn + (mx - mn) * row / h
-        line = ""
-        for v in vals:
-            line += "#" if v >= thresh else " "
-        if row == h:
-            lbl = f"${mx:>9,.0f} |"
-        elif row == 0:
-            lbl = f"${mn:>9,.0f} |"
-        elif row == h // 2:
-            lbl = f"${(mx+mn)/2:>9,.0f} |"
-        else:
-            lbl = " " * 11 + "|"
-        pdf.cell(0, 4, lbl + line, new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 4, " " * 11 + "+" + "-" * len(vals), new_x="LMARGIN", new_y="NEXT")
-
-    # Disclaimer
-    pdf.ln(8)
-    pdf.set_font("Helvetica", "I", 8)
-    pdf.set_text_color(150, 150, 150)
-    pdf.multi_cell(0, 4,
-        "DISCLAIMER: Past performance does not guarantee future results. "
-        "Trading forex and commodities carries significant risk. "
-        "Backtest results are simulated and may not reflect real market conditions "
-        "including slippage, spreads, and execution delays. "
-        "Only trade with capital you can afford to lose.")
-
-    path = "C:/Users/kinga/Documents/My Site/M1-M5 scalping/Kingade_Backtest_Report.pdf"
-    pdf.output(path)
-    return path
+        rows.append([m, f"${pnl:,.2f}", f"${cum:,.2f}"])
+    return _table(rows, [90, 120, 120], NAVY, 8)
 
 
-def send_pdf(path):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
-    with open(path, "rb") as f:
-        resp = requests.post(url, data={"chat_id": CHAT_ID, "caption": "Kingade Scalper Bot - Full Backtest Report (No Filters, 6 Months, 3 Symbols)"}, files={"document": f}, timeout=120)
-    data = resp.json()
-    print(f"Sent: {data.get('ok', False)}")
-    return data.get("ok", False)
+def _equity_chart(R):
+    vals = R.get("equity_curve")
+    if not vals or len(vals) < 2:
+        return Spacer(1, 1)
+    pts = list(enumerate(vals))
+    d = Drawing(480, 170)
+    d.add(Rect(0, 0, 480, 170, fillColor=colors.HexColor("#fafafa")))
+    lp = LinePlot()
+    lp.x, lp.y, lp.width, lp.height = 50, 30, 410, 125
+    lp.data = [pts]
+    lp.lines[0].strokeColor = colors.HexColor(BLUE)
+    lp.lines[0].strokeWidth = 1.5
+    lp.xValueAxis.valueMin = 0
+    lp.xValueAxis.valueMax = len(pts)
+    lp.xValueAxis.labels.fontSize = 7
+    lp.yValueAxis.labels.fontSize = 7
+    lp.yValueAxis.labelTextFormat = "$%0.0f"
+    d.add(lp)
+    return d
+
+
+def generate_pdf(R=None, output_path=None):
+    """Build the full backtest PDF. `R` is a results dict; if None it is loaded
+    from backtest_2mo.json (or backtest.json) so the report always uses real data."""
+    if R is None:
+        for cand in ("backtest_2mo.json", "backtest.json"):
+            p = os.path.join(BASE, cand)
+            if os.path.exists(p):
+                with open(p, encoding="utf-8") as f:
+                    data = json.load(f)
+                R = data.get("results") if isinstance(data, dict) and "results" in data else data
+                break
+    if R is None:
+        raise RuntimeError("No results provided and no backtest JSON found.")
+
+    styles = get_styles()
+    out = output_path or os.path.join(
+        BASE, f"Kingade_Backtest_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf")
+
+    doc = SimpleDocTemplate(out, pagesize=A4,
+                            leftMargin=15*mm, rightMargin=15*mm,
+                            topMargin=15*mm, bottomMargin=15*mm)
+    elements = []
+
+    elements.append(Paragraph("Kingade Scalper Bot", styles["T"]))
+    elements.append(Paragraph(
+        f"Full Performance Report | Generated {datetime.now().strftime('%d %B %Y %H:%M')}",
+        styles["ST"]))
+    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor(NAVY)))
+    elements.append(Spacer(1, 8))
+
+    elements.append(_summary_table(R, styles))
+    elements.append(Spacer(1, 8))
+    elements.append(_risk_table(R))
+    elements.append(Spacer(1, 12))
+
+    elements.extend(_by_table("Performance By Timeframe", "timeframe", R.get("tf_stats") or {}))
+    elements.extend(_by_table("Performance By Symbol", "symbol", R.get("sym_stats") or {}, sort_pnl=True))
+    elements.append(PageBreak())
+
+    elements.append(Paragraph("Monthly Performance", styles["SH"]))
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc")))
+    elements.append(Spacer(1, 4))
+    elements.append(_monthly_table(R))
+    elements.append(Spacer(1, 12))
+
+    elements.append(Paragraph("Equity Curve", styles["SH"]))
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc")))
+    elements.append(Spacer(1, 4))
+    elements.append(_equity_chart(R))
+
+    doc.build(elements)
+    print(f"Report saved: {out}")
+    return out
+
+
+def send(path, caption=None):
+    import telegram_notifier as tg
+    cap = caption or f"Kingade Backtest Report ({datetime.now().strftime('%d %b %Y')})"
+    ok = tg.send_document(path, caption=cap)
+    print("SENT" if ok else "FAILED")
+    return ok
 
 
 if __name__ == "__main__":
-    print("Generating PDF...")
     path = generate_pdf()
-    print(f"PDF saved: {path}")
-
-    print("Sending to Telegram...")
-    send_pdf(path)
-    print("Done!")
+    send(path)

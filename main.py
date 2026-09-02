@@ -29,6 +29,9 @@ import license_manager
 # ─── Single Instance Lock ──────────────────────────────────────────
 import subprocess
 
+_LOCK_DIRNAME = "bot.lock.d"
+LOCK_PID_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), _LOCK_DIRNAME)
+# Legacy single-file path kept for external tooling that reads/stale-clears it.
 LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.lock")
 
 def _is_process_alive(pid):
@@ -46,32 +49,52 @@ def _acquire_lock():
     """Ensure only one bot instance runs. Kill stale locks if process is dead.
     NOTE: must NOT taskkill pythonw.exe here — the bot is launched via
     pythonw.exe by the auto-start batch files, so that would kill itself."""
-    if os.path.exists(LOCK_FILE):
-        try:
-            with open(LOCK_FILE, "r") as f:
-                old_pid = int(f.read().strip())
-            if _is_process_alive(old_pid):
-                print(f"Another bot instance is running (PID {old_pid}). Exiting.")
-                return False
-        except (ValueError, OSError):
-            pass
-        # Stale lock or error — remove it
-        try:
-            os.remove(LOCK_FILE)
-        except OSError:
-            pass
-    with open(LOCK_FILE, "w") as f:
-        f.write(str(os.getpid()))
-    return True
+    # Atomic claim: create a fresh lock directory. This is the single arbiter —
+    # only one process can win os.makedirs() for a path that does not exist.
+    # Anyone who loses the race aborts immediately. This removes the old
+    # read-then-write TOCTOU that let two instances both proceed.
+    if _try_claim_lock():
+        return True
+    # We lost the claim. Reuse the PID file (kept for compatibility/tooling).
+    pid_file = os.path.join(LOCK_PID_DIR, "pid")
+    try:
+        with open(pid_file, "r") as f:
+            old_pid = int(f.read().strip())
+        if _is_process_alive(old_pid):
+            print(f"Another bot instance is running (PID {old_pid}). Exiting.")
+            return False
+    except (ValueError, OSError):
+        pass
+    # The lock-holder's PID is dead (stale) — try to reclaim once.
+    try:
+        os.rmdir(LOCK_PID_DIR)
+    except OSError:
+        return False
+    return _try_claim_lock()
+
+def _try_claim_lock():
+    """Atomically create the lock dir; on success write our PID. Returns bool."""
+    try:
+        os.makedirs(LOCK_PID_DIR)
+    except FileExistsError:
+        return False
+    try:
+        with open(os.path.join(LOCK_PID_DIR, "pid"), "w") as f:
+            f.write(str(os.getpid()))
+        return True
+    except OSError:
+        os.rmdir(LOCK_PID_DIR)
+        return False
 
 def _release_lock():
-    """Remove lock file on exit."""
+    """Remove lock on exit. Only the instance that holds it may release it."""
     try:
-        if os.path.exists(LOCK_FILE):
-            with open(LOCK_FILE, "r") as f:
+        pid_file = os.path.join(LOCK_PID_DIR, "pid")
+        if os.path.exists(pid_file):
+            with open(pid_file, "r") as f:
                 pid = int(f.read().strip())
             if pid == os.getpid():
-                os.remove(LOCK_FILE)
+                os.rmdir(LOCK_PID_DIR)
     except Exception:
         pass
 
@@ -359,7 +382,8 @@ def main():
                         emoji = "\U0001F7E2" if direction == "BUY" else "\U0001F534"
                         sl_dist = abs(signal_data["entry_price"] - signal_data["sl"])
                         tp_txt, rr_txt = "OPEN", "1:inf"
-                        if not config.USE_OPEN_RR:
+                        if not config.get_symbol_param(
+                                symbol, "USE_OPEN_RR", config.USE_OPEN_RR):
                             tp_dist = abs(signal_data["tp1"] - signal_data["entry_price"])
                             tp_txt = f"{tp_dist:.2f} pts"
                             rr_txt = f"1:{tp_dist / sl_dist:.2f}" if sl_dist > 0 else "1:0"

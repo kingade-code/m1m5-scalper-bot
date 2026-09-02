@@ -31,3 +31,14 @@ PAUSED
 data/
 download/
 *.err
+
+# Backtest / analysis JSON artifacts (generated, not source)
+*_comparison.json
+*_comparison_*.json
+backtest_2mo.json
+fill_audit.json
+last_week_bt.json
+m1_all_profitable_hours_*.json
+
+# Runtime lock dir
+bot.lock.d/

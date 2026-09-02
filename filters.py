@@ -69,6 +69,16 @@ def check_trend_filter(df, direction, symbol=None):
     uptrend = fast_now > slow_now
     downtrend = fast_now < slow_now
 
+    direction = direction.lower() if direction else direction
+
+    # Dead-band: if the two EMAs are essentially converged (not a clear
+    # trend), allow either direction instead of the strict directional gate.
+    dead_band = float(config.TREND_FILTER_DEAD_BAND)
+    if dead_band > 0 and slow_now != 0:
+        gap = abs(fast_now - slow_now) / abs(slow_now)
+        if gap <= dead_band:
+            return True
+
     if direction == "bullish" and uptrend:
         return True
     if direction == "bearish" and downtrend:

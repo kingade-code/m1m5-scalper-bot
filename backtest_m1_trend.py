@@ -4,20 +4,23 @@ import sys
 import MetaTrader5 as mt5
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
+from datetime import timezone
 from dataclasses import dataclass, field
 from typing import Optional
 import config
 import pattern_detector
 import filters
 import swing_detector
+import zones
 
 # ─── Backtest Config ──────────────────────────────────────────────
 INITIAL_BALANCE = 500.0
-RISK_PER_TRADE = config.RISK_PERCENT  # 3%
+RISK_PER_TRADE = config.RISK_PERCENT  # 1%
 BACKTEST_SYMBOLS = ["XAUUSD"]
 BACKTEST_TIMEFRAMES = [mt5.TIMEFRAME_M1]
 BACKTEST_MONTHS = 3  # ~3 weeks
+FROM_DATE = None  # optional YYYY-MM-DD: only evaluate signals on/after this
 MT5_CHUNK_SIZE = 60000
 
 # Trend filter TF. "m1" = M1 EMAs (matches live check_trend_filter),
@@ -32,6 +35,8 @@ TRADE_COOLDOWN_SECONDS = config.TRADE_COOLDOWN_SECONDS  # live parity
 # Trailing config (read live per-symbol override so backtest == live behavior)
 TRAIL_START_ATR = config.get_symbol_param("XAUUSD", "TRAILING_START_ATR", config.TRAILING_START_ATR)  # live: 0.3
 TRAIL_STEP_ATR = config.get_symbol_param("XAUUSD", "TRAILING_STEP_ATR", config.TRAILING_STEP_ATR)     # live: 0.1
+# 1:2 activation: trail engages only once profit >= TRAIL_ACTIVATE_R * SL dist.
+TRAIL_ACTIVATE_R = config.get_symbol_param("XAUUSD", "TRAIL_ACTIVATE_R", config.TRAIL_ACTIVATE_R)
 USE_TRAILING = config.USE_TRAILING_STOP
 
 # Open RR + RR-step trailing (live == config). When ON, there is no fixed
@@ -96,6 +101,7 @@ class Trade:
     bars_held: int = 0
     trailing_sl: Optional[float] = None
     signal_wick: Optional[float] = None
+    pattern: str = ""
 
 
 def mt5_init():
@@ -106,7 +112,90 @@ def mt5_init():
     print(f"MT5 connected | Account: {info.login} | Balance: ${info.balance:.2f}")
 
 
+_CSV_CACHE = {}
+
+
+def _csv_feed(symbol, timeframe):
+    """Load a local OHLCV CSV as the data source for `symbol` if present.
+
+    Expects data/<symbol>_m1.csv with columns timestamp,open,high,low,close
+    (volume optional). Returns a DataFrame matching get_ohlc's MT5 shape, or
+    None if no CSV exists for this symbol (caller falls back to MT5). M5 is
+    resampled from the M1 series. Cached per (symbol, timeframe).
+    """
+    key = (symbol, timeframe)
+    if key in _CSV_CACHE:
+        return _CSV_CACHE[key]
+
+    import os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "data", f"{symbol.lower()}_m1.csv")
+    if not os.path.isfile(path):
+        _CSV_CACHE[key] = None
+        return None
+
+    df = pd.read_csv(path)
+    df.columns = [c.strip().lower() for c in df.columns]
+    if "timestamp" in df.columns:
+        df["time"] = pd.to_datetime(df["timestamp"], unit="s")
+    elif "time" in df.columns:
+        df["time"] = pd.to_datetime(df["time"])
+        if "timestamp" not in df.columns:
+            df = df.rename(columns={"time": "time"})
+    for c in ["open", "high", "low", "close"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    df = df.dropna(subset=["open", "high", "low", "close"]).sort_values("time")
+    for c in ["tick_volume", "spread", "real_volume"]:
+        if c not in df.columns:
+            df[c] = 0
+    df = df[["time", "open", "high", "low", "close",
+             "tick_volume", "spread", "real_volume"]].reset_index(drop=True)
+
+    if timeframe == mt5.TIMEFRAME_M5:
+        d = df.set_index(df["time"])
+        m5 = pd.DataFrame({
+            "open": d["open"].resample("5min").first(),
+            "high": d["high"].resample("5min").max(),
+            "low": d["low"].resample("5min").min(),
+            "close": d["close"].resample("5min").last(),
+            "tick_volume": d["tick_volume"].resample("5min").sum(),
+            "real_volume": d["real_volume"].resample("5min").sum(),
+        }).dropna().reset_index()
+        m5 = m5.rename(columns={"index": "time"})
+        m5["time"] = m5["time"].dt.tz_localize(None)
+        m5["spread"] = 0
+        m5 = m5[["time", "open", "high", "low", "close",
+                 "tick_volume", "spread", "real_volume"]].reset_index(drop=True)
+        _CSV_CACHE[key] = m5
+    else:
+        _CSV_CACHE[key] = df
+    return _CSV_CACHE[key]
+
+
 def get_ohlc(symbol, timeframe, count):
+    # CSV-feed override: if a <symbol>_m1.csv exists in data/, source the
+    # backtest from it (3y+ local history) instead of MT5's capped history.
+    csv_df = _csv_feed(symbol, timeframe)
+    if csv_df is not None:
+        return csv_df.tail(count).reset_index(drop=True) if len(csv_df) > 0 else csv_df
+
+    # Live-date mode: when FROM_DATE is set, fetch the exact recent window
+    # (warmup + from-date -> now) via copy_rates_range instead of a count-sliced
+    # copy_rates_from_pos, which can return a stale slice on short fetches.
+    if FROM_DATE is not None:
+        warmup_bars = _warmup_for(timeframe)
+        base = FROM_DATE if isinstance(FROM_DATE, datetime) else datetime.combine(FROM_DATE, datetime.min.time())
+        start = base - timedelta(minutes=warmup_bars * _min_per_bars(timeframe) + 300)
+        rates = mt5.copy_rates_range(symbol, timeframe, start, datetime.now(timezone.utc))
+        if rates is None or len(rates) == 0:
+            return None
+        df = pd.DataFrame(np.array(rates, dtype=[
+            ('time','<i8'),('open','<f8'),('high','<f8'),('low','<f8'),
+            ('close','<f8'),('tick_volume','<u8'),('spread','<i4'),('real_volume','<u8')
+        ]))
+        df["time"] = pd.to_datetime(df["time"], unit="s")
+        return df
+
     all_rates = []
     fetched = 0
     while fetched < count:
@@ -128,6 +217,42 @@ def get_ohlc(symbol, timeframe, count):
     return df
 
 
+def _min_per_bars(tf):
+    """Minutes per bar for a MetaTrader timeframe constant."""
+    return {mt5.TIMEFRAME_M1: 1, mt5.TIMEFRAME_M5: 5}.get(tf, 1)
+
+
+def _warmup_for(tf):
+    """Indicator/pattern warmup bars needed before the from-date."""
+    return {mt5.TIMEFRAME_M1: 1500, mt5.TIMEFRAME_M5: 600}.get(tf, 1500)
+
+
+def _session_ok_bt(symbol, timeframe, hour, pattern):
+    """Mirror live session-hour gating (signal_engine._session_ok) for the
+    backtest. Returns True when a signal at the given UTC `hour` is allowed:
+    per-pattern SESSION_PATTERN_HOURS_<TF> first, then symbol-level
+    SESSION_ALLOW_HOURS_<TF>. Empty allow-list = all hours allowed."""
+    tf = "M1" if timeframe == mt5.TIMEFRAME_M1 else "M5"
+    if not config.get_symbol_param(symbol, "USE_SESSION_FILTER", config.USE_SESSION_FILTER):
+        return True
+    if pattern:
+        pat_map = config.get_symbol_param(
+            symbol, f"SESSION_PATTERN_HOURS_{tf}",
+            config.get_symbol_param(symbol, "SESSION_PATTERN_HOURS",
+                                    config.SESSION_PATTERN_HOURS))
+        if isinstance(pat_map, dict):
+            sym_map = pat_map.get(symbol) or {}
+            pat_allow = sym_map.get(pattern) if isinstance(sym_map, dict) else None
+            if pat_allow:
+                return hour in pat_allow
+    allow = config.get_symbol_param(
+        symbol, f"SESSION_ALLOW_HOURS_{tf}",
+        config.get_symbol_param(symbol, "SESSION_ALLOW_HOURS", config.SESSION_ALLOW_HOURS))
+    if not allow:
+        return True
+    return hour in allow
+
+
 def get_symbol_tick_value(symbol):
     info = mt5.symbol_info(symbol)
     if info is None:
@@ -142,6 +267,14 @@ def _update_trailing_stop(trade, bar, current_atr):
         return  # RR-step trail replaces ATR trailing
     trail_start = current_atr * TRAIL_START_ATR
     trail_step = current_atr * TRAIL_STEP_ATR
+    # 1:2 activation: trail only engages once profit >= TRAIL_ACTIVATE_R *
+    # original SL distance (mirrors live _manage_trailing_stop).
+    if TRAIL_ACTIVATE_R > 0:
+        sl_distance = abs(trade.entry_price - trade.sl)
+        if sl_distance > 0:
+            activ_dist = TRAIL_ACTIVATE_R * sl_distance
+            if activ_dist > trail_start:
+                trail_start = activ_dist
     if trade.direction == "buy":
         unrealized = bar["high"] - trade.entry_price
         if unrealized >= trail_start:
@@ -179,8 +312,9 @@ def _update_be_protect(trade, bar):
 
 
 def _update_rr_trail(trade, bar):
-    """Open-RR ratchet: once unrealized profit reaches RR_TRAIL_START_R*SL,
-    the stop locks (milestone - RR_TRAIL_LOCK_R)*R every RR_TRAIL_STEP_R R."""
+    """Open-RR ratchet: once unrealized profit reaches the start milestone,
+    the stop locks (milestone - lock)*R. Uses the staircase 2/3/5/7...∞
+    ladder when config.USE_STAIRCASE_TRAIL, else the fixed 3/5/7 grid."""
     if not USE_OPEN_RR:
         return
     sl_distance = abs(trade.entry_price - trade.sl)
@@ -193,14 +327,21 @@ def _update_rr_trail(trade, bar):
     if unrealized <= 0:
         return
     rr = unrealized / sl_distance
-    if rr < RR_TRAIL_START_R:
-        return
-    milestone = RR_TRAIL_START_R + (
-        (rr - RR_TRAIL_START_R) // RR_TRAIL_STEP_R
-    ) * RR_TRAIL_STEP_R
-    lock_r = milestone - RR_TRAIL_LOCK_R
-    if lock_r <= 0:
-        return
+
+    if config.USE_STAIRCASE_TRAIL:
+        lock_r = config.staircase_lock_r(rr)
+        if lock_r <= 0:
+            return
+    else:
+        if rr < RR_TRAIL_START_R:
+            return
+        milestone = RR_TRAIL_START_R + (
+            (rr - RR_TRAIL_START_R) // RR_TRAIL_STEP_R
+        ) * RR_TRAIL_STEP_R
+        lock_r = milestone - RR_TRAIL_LOCK_R
+        if lock_r <= 0:
+            return
+
     if trade.direction == "buy":
         lock_price = trade.entry_price + lock_r * sl_distance
         if trade.trailing_sl is None or lock_price > trade.trailing_sl:
@@ -294,21 +435,23 @@ def _close_trade(trade, bar, tick_value, tick_size):
         else:
             trade.exit_price = bar["close"]
 
-    if SPREAD_PRICE > 0:
+    spread_p = _FRICTION_SPREAD.get(trade.symbol, 0.0)
+    if spread_p > 0:
         # Charge the full spread against the exit. Buy exits on the bid
         # (exit - spread/2) having entered on the ask (+ spread/2); sell
         # the mirror. Net: exit_price pushed a full spread against us.
         if trade.direction == "buy":
-            trade.exit_price -= SPREAD_PRICE
+            trade.exit_price -= spread_p
         else:
-            trade.exit_price += SPREAD_PRICE
+            trade.exit_price += spread_p
 
-    if SLIP_PRICE > 0 and exit_reason == "sl":
+    slip_p = _FRICTION_SLIP.get(trade.symbol, 0.0)
+    if slip_p > 0 and exit_reason == "sl":
         # Stops get filled worse than the quoted level in live markets.
         if trade.direction == "buy":
-            trade.exit_price -= SLIP_PRICE
+            trade.exit_price -= slip_p
         else:
-            trade.exit_price += SLIP_PRICE
+            trade.exit_price += slip_p
 
     if trade.direction == "buy":
         trade.result = "win" if trade.exit_price >= trade.entry_price else "loss"
@@ -333,10 +476,40 @@ def _close_trade(trade, bar, tick_value, tick_size):
             trade.profit = (trade.entry_price - trade.exit_price) * trade.lot_size * 100000
 
 
+def _bt_bars(tf, symbol):
+    """Bars to fetch per symbol/timeframe. M1 is capped by MT5 terminal
+    history (~80-90k bars); M5 sized to exactly the 3-month window."""
+    caps = {
+        "XAUUSD": {mt5.TIMEFRAME_M1: 80000, mt5.TIMEFRAME_M5: 17944},
+        "BTCUSD": {mt5.TIMEFRAME_M1: 90000, mt5.TIMEFRAME_M5: 26491},
+    }
+    return caps.get(symbol, {}).get(tf, 27000)
+
+
+def _bars_to_fetch(tf, symbol):
+    """Number of bars to request. When a local CSV feed exists for `symbol`,
+    request the full available history (3y+) instead of MT5's ~6-month cap."""
+    import os
+    cape = os.environ.get("BT_BARS")
+    if cape:
+        try:
+            return int(cape)
+        except ValueError:
+            pass
+    if _csv_feed(symbol, tf) is not None:
+        return 5_000_000
+    return _bt_bars(tf, symbol)
+
+
+# Per-symbol realistic friction (price units). Populated in __main__.
+_FRICTION_SPREAD = {}
+_FRICTION_SLIP = {}
+
+
 def run_backtest():
     mt5_init()
 
-    bars_needed = 96 * 22 * BACKTEST_MONTHS + 500  # More bars for M1
+    bars_needed = _bt_bars(TREND_TF, BACKTEST_SYMBOLS[0])
 
     # Pre-fetch trend data. "m1" mode: a single M1 EMA set used for every
     # timeframe (== live). "own" mode: EMA computed on each signal TF's own
@@ -344,7 +517,7 @@ def run_backtest():
     trend_data = {}  # {(symbol, tf): {"df": df, "fast": ..., "slow": ...}}
     if config.USE_TREND_FILTER and not RELAX_TREND and TREND_TF_MODE == "m1":
         for symbol in BACKTEST_SYMBOLS:
-            trend_bars = bars_needed
+            trend_bars = _bt_bars(TREND_TF, symbol)
             trend_df = get_ohlc(symbol, TREND_TF, trend_bars)
             if trend_df is not None and len(trend_df) > 160:
                 fast_ema = filters.calc_ema(trend_df["close"], 10)
@@ -365,9 +538,10 @@ def run_backtest():
     for symbol in BACKTEST_SYMBOLS:
         for tf in BACKTEST_TIMEFRAMES:
             combo_idx += 1
-            print(f"\r[{combo_idx}/{total_combos}] {symbol} M1...", end="", flush=True)
+            name = "M1" if tf == mt5.TIMEFRAME_M1 else "M5"
+            print(f"\r[{combo_idx}/{total_combos}] {symbol} {name}...", end="", flush=True)
 
-            df = get_ohlc(symbol, tf, bars_needed)
+            df = get_ohlc(symbol, tf, _bars_to_fetch(tf, symbol))
             if df is None or len(df) < 200:
                 print(f" skipped (insufficient data: {len(df) if df is not None else 0})")
                 continue
@@ -423,6 +597,10 @@ def run_backtest():
                     continue
 
                 # ─── Pattern detection ───────────────────────────────
+                if FROM_DATE is not None and current_time < FROM_DATE:
+                    # Evaluate only on/after the requested start date.
+                    # Earlier bars are still used for EMA/ATR/pattern warmup.
+                    continue
                 window = df.iloc[max(0, i - 100):i + 1]
                 raw_direction = pattern_detector.detect_pattern(window, symbol=symbol)
                 if raw_direction == 0:
@@ -430,6 +608,16 @@ def run_backtest():
 
                 direction = "bullish" if raw_direction == 1 else "bearish"
                 signal_direction = "buy" if raw_direction == 1 else "sell"
+
+                # ─── Session-hour (time-of-day) filter ────────────────
+                # Mirrors live signal_engine._session_ok: reject signals whose
+                # UTC entry hour is outside the configured profitable hours
+                # (per-pattern, then symbol-level). Off if USE_SESSION_FILTER.
+                if not _session_ok_bt(
+                    symbol, tf, current_time.hour,
+                    pattern_detector.detect_pattern_name(window, symbol=symbol),
+                ):
+                    continue
 
                 prev_bar = df.iloc[i - 1]
                 prev_close = prev_bar["close"]
@@ -457,6 +645,27 @@ def run_backtest():
                                 continue
                             if direction == "bearish" and not (downtrend and t_price < f_val):
                                 continue
+
+                # ─── Ranging-market filter ────────────────────────────
+                # Mirrors live: reject consolidation/chop. Backtest reads
+                # config.USE_RANGING_FILTER (--no-ranging sets it False).
+                if not filters.check_ranging_filter(df, symbol):
+                    continue  # ranging filter rejected
+
+                # ─── Demand/Supply zone filter ─────────────────────────
+                # Mirrors live _analyze_pattern: bullish needs a nearby
+                # demand (support) zone, bearish needs supply (resistance).
+                # Built from bars up to i only (no look-ahead).
+                if config.get_symbol_param(symbol, "USE_ZONE_FILTER", config.USE_ZONE_FILTER):
+                    zone_window = df.iloc[max(0, i - config.get_symbol_param(
+                        symbol, "ZONE_LOOKBACK", config.ZONE_LOOKBACK)):i + 1]
+                    zone, zone_dist, zone_atr = zones.get_zone_context(
+                        symbol, zone_window, direction, prev_close)
+                    max_zd = float(config.get_symbol_param(
+                        symbol, "ZONE_MAX_DIST_ATR", 0))
+                    if max_zd > 0 and (zone is None or zone_atr <= 0 or
+                                       zone_dist > max_zd * zone_atr):
+                        continue  # not acting at the relevant zone
 
                 # ─── Wick SL (prev bar low/high) - 5 pip buffer ───────
                 signal_wick = prev_bar["low"] if direction == "bullish" else prev_bar["high"]
@@ -502,8 +711,10 @@ def run_backtest():
                     else:
                         atr_tp = prev_close - tp_dist
 
-                # ─── Lot sizing (RISK_PER_TRADE% of balance) ────────────────────
-                risk_amount = balance * RISK_PER_TRADE / 100.0
+                # ─── Lot sizing (RISK_PER_TRADE% of STARTING balance, no
+                # compounding, so results don't run away; matches classic
+                # strategy-lab conventions) ─────────────────────────────
+                risk_amount = INITIAL_BALANCE * RISK_PER_TRADE / 100.0
                 sl_ticks = sl_dist / tick_size
                 lot_size = risk_amount / (sl_ticks * tick_value)
                 lot_size = max(0.01, round(lot_size, 2))
@@ -515,10 +726,11 @@ def run_backtest():
                     entry_price=prev_close,
                     sl=swing_sl,
                     tp1=atr_tp,
-                    entry_time=current_time,
-                    lot_size=lot_size,
-                    signal_wick=signal_wick,
-                )
+                      entry_time=current_time,
+                      lot_size=lot_size,
+                      signal_wick=signal_wick,
+                      pattern=pattern_detector.detect_pattern_name(window, symbol=symbol),
+                  )
                 open_trades.append(trade)
                 all_trades.append(trade)
                 signals_found += 1
@@ -605,9 +817,11 @@ def _compile_results(all_trades, equity_points, final_balance):
     avg_bars = np.mean([t.bars_held for t in closed]) if closed else 0
 
     sym_stats = {}
+    pat_stats = {}
     monthly = {}
     weekly = {}
     daily = {}
+    hourly = {}
     for t in closed:
         if t.symbol not in sym_stats:
             sym_stats[t.symbol] = {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
@@ -617,6 +831,17 @@ def _compile_results(all_trades, equity_points, final_balance):
         else:
             sym_stats[t.symbol]["losses"] += 1
         sym_stats[t.symbol]["pnl"] += t.profit
+
+        pname = t.pattern or "unknown"
+        if pname not in pat_stats:
+            pat_stats[pname] = {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0, "sym": set()}
+        pat_stats[pname]["trades"] += 1
+        if t.result == "win":
+            pat_stats[pname]["wins"] += 1
+        else:
+            pat_stats[pname]["losses"] += 1
+        pat_stats[pname]["pnl"] += t.profit
+        pat_stats[pname]["sym"].add(t.symbol)
 
         mk = t.entry_time.strftime("%Y-%m")
         monthly[mk] = monthly.get(mk, {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0})
@@ -645,6 +870,15 @@ def _compile_results(all_trades, equity_points, final_balance):
             daily[dk]["losses"] += 1
         daily[dk]["pnl"] += t.profit
 
+        hk = f"{t.entry_time.hour:02d}:00"
+        hourly.setdefault(hk, {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0})
+        hourly[hk]["trades"] += 1
+        if t.result == "win":
+            hourly[hk]["wins"] += 1
+        else:
+            hourly[hk]["losses"] += 1
+        hourly[hk]["pnl"] += t.profit
+
     return {
         "trades": closed,
         "equity_curve": equity_points,
@@ -670,9 +904,11 @@ def _compile_results(all_trades, equity_points, final_balance):
         "calmar": calmar,
         "avg_bars_held": avg_bars,
         "sym_stats": sym_stats,
+        "pat_stats": pat_stats,
         "monthly": monthly,
         "weekly": weekly,
         "daily": daily,
+        "hourly": hourly,
     }
 
 
@@ -721,6 +957,21 @@ def _print_results(r):
     for sym, s in sorted(r["sym_stats"].items(), key=lambda x: x[1]["pnl"], reverse=True):
         wr = (s["wins"] / s["trades"] * 100) if s["trades"] else 0
         print(f"  {sym:<8} | Trades: {s['trades']:>3} | WR: {wr:5.1f}% | P/L: ${s['pnl']:>10,.2f}")
+
+    print(f"\n  {'BY PATTERN':^{w-4}}")
+    print(f"  {'-'*(w-4)}")
+    for p, s in sorted(r["pat_stats"].items(), key=lambda x: x[1]["pnl"]):
+        wr = (s["wins"] / s["trades"] * 100) if s["trades"] else 0
+        syms = ",".join(sorted(s["sym"]))
+        print(f"  {p:<14} | Trades: {s['trades']:>3} | WR: {wr:5.1f}% | P/L: ${s['pnl']:>9,.2f} | {syms}")
+
+    print(f"\n  {'BY HOUR (best wins)':^{w-4}}")
+    print(f"  {'-'*(w-4)}")
+    for h, s in sorted(r["hourly"].items(), key=lambda x: x[1]["pnl"], reverse=True):
+        if s["trades"] == 0:
+            continue
+        wr = (s["wins"] / s["trades"] * 100) if s["trades"] else 0
+        print(f"  {h}  | Trades: {s['trades']:>3} | WR: {wr:5.1f}% | P/L: ${s['pnl']:>9,.2f}")
 
     print(f"\n  {'MONTHLY P/L':^{w-4}}")
     print(f"  {'-'*(w-4)}")
@@ -771,6 +1022,12 @@ if __name__ == "__main__":
     p.add_argument("--atr-gate", type=float, default=None, help="None=config; skip if ATR(14) > value")
     p.add_argument("--range-edge", type=float, default=None, help="None=config; require entry within N*ATR of a range extreme")
     p.add_argument("--relax-trend", action="store_true", help="skip the EMA10/100 trend filter (mean-reversion mode)")
+    p.add_argument("--no-ranging", action="store_true",
+                   help="disable the ranging-market filter (USE_RANGING_FILTER=False) for this run")
+    p.add_argument("--no-zone", action="store_true",
+                   help="disable the demand/supply zone filter (USE_ZONE_FILTER=False) for this run")
+    p.add_argument("--rr-start", type=float, default=None,
+                   help="override RR_TRAIL_START_R (milestone R where Open-RR trailing begins)")
     def _tf_arg(s):
         vals = [x for x in s.split(",") if x]
         for v in vals:
@@ -781,6 +1038,10 @@ if __name__ == "__main__":
     p.add_argument("--tf", type=_tf_arg, default=["M1", "M5"], help="timeframes to backtest (comma list, default both as live)")
     p.add_argument("--symbol", default="XAUUSD", help="comma-separated symbols (default XAUUSD)")
     p.add_argument("--months", type=int, default=3, help="backtest lookback in months (7 = ~3.5 months of M1 depth)")
+    p.add_argument("--from-date", type=str, default=None,
+                   help="YYYY-MM-DD: only evaluate signals on/after this date "
+                        "(earlier bars still loaded for EMA/ATR/pattern warmup). "
+                        "Defaults to the full loaded history.")
     p.add_argument("--force-pattern", action="store_true", help="use pattern entry mode for all symbols (needed for non-gold)")
     p.add_argument("--max-bars", type=int, default=None, help="None=config; force-close after N M1 bars in trade")
     p.add_argument("--trend-tf", choices=["m1", "own"], default="m1",
@@ -797,8 +1058,21 @@ if __name__ == "__main__":
     BACKTEST_TIMEFRAMES = [tf_map[x] for x in args.tf]
     BACKTEST_SYMBOLS = [s.strip() for s in args.symbol.split(",") if s.strip()]
     BACKTEST_MONTHS = args.months
+    if args.from_date:
+        try:
+            FROM_DATE = datetime.strptime(args.from_date, "%Y-%m-%d")
+        except ValueError:
+            print(f"ERROR: --from-date must be YYYY-MM-DD, got {args.from_date!r}")
+            sys.exit(1)
     if args.force_pattern:
         config.ENTRY_MODE = "pattern"  # process-local; live config untouched
+    if args.no_ranging:
+        config.USE_RANGING_FILTER = False  # process-local; live config untouched
+    if args.no_zone:
+        config.USE_ZONE_FILTER = False  # process-local; live config untouched
+    if args.rr_start is not None:
+        RR_TRAIL_START_R = args.rr_start
+        config.RR_TRAIL_START_R = args.rr_start  # keep config in sync for live-matching
     if args.max_bars is not None:
         MAX_BARS = args.max_bars
     TREND_TF_MODE = args.trend_tf
@@ -806,6 +1080,16 @@ if __name__ == "__main__":
         SPREAD_PRICE = args.spread
     if args.slip is not None:
         SLIP_PRICE = args.slip
+
+    # Per-symbol realistic friction: spread at entry/exit and stop-fill
+    # slippage in price units. CLI overrides apply to every symbol.
+    _DEFAULTS_SPREAD = {"XAUUSD": 0.3, "BTCUSD": 1.0}   # live-hour spread
+    _DEFAULTS_SLIP = {"XAUUSD": 0.5, "BTCUSD": 5.0}     # stop-fill slippage
+    for s in BACKTEST_SYMBOLS:
+        _FRICTION_SPREAD[s] = (args.spread if args.spread is not None
+                               else _DEFAULTS_SPREAD.get(s, SPREAD_PRICE))
+        _FRICTION_SLIP[s] = (args.slip if args.slip is not None
+                             else _DEFAULTS_SLIP.get(s, SLIP_PRICE))
 
     if args.trail_start is not None:
         TRAIL_START_ATR = args.trail_start
@@ -830,8 +1114,6 @@ if __name__ == "__main__":
     if result and SEND_REPORT:
         from fpdf import FPDF
         import telegram_notifier as tg
-        from datetime import datetime
-
         r = result
 
         class PDF(FPDF):
@@ -841,9 +1123,9 @@ if __name__ == "__main__":
                 self.cell(0, 12, "KINGADE SCALPER BOT", new_x="LMARGIN", new_y="NEXT", align="C")
                 self.set_font("Helvetica", "", 10)
                 self.set_text_color(100, 100, 100)
-                self.cell(0, 6, "Backtest Performance Report", new_x="LMARGIN", new_y="NEXT", align="C")
-                self.cell(0, 5, "EMA(10)/EMA(100) Trend | M1 Pattern | Wick SL | Reverse Close | 1:4.0 RR", new_x="LMARGIN", new_y="NEXT", align="C")
-                self.cell(0, 5, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT", align="C")
+                self.cell(0, 6, "Backtest Performance Report - 3 Months (M1 data limited by broker history)", new_x="LMARGIN", new_y="NEXT", align="C")
+                self.cell(0, 5, "Entry: Hammer/Star/Engulf (doji-guarded) | Trend: EMA(10)/EMA(100) + Ranging-Market Filter | Exit: Open-RR trail", new_x="LMARGIN", new_y="NEXT", align="C")
+                self.cell(0, 5, f"Risk: 1% of balance | SL: swing-wick +/- pip buffer | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT", align="C")
                 self.ln(2)
                 self.set_draw_color(255, 140, 0)
                 self.set_line_width(0.8)
@@ -883,6 +1165,19 @@ if __name__ == "__main__":
             pdf.set_text_color(0, 0, 0)
             pdf.cell(0, 8, f"Variant: {RUN_LABEL}", new_x="LMARGIN", new_y="NEXT")
             pdf.ln(2)
+
+        # Coverage / assumptions
+        pdf.section_title("REPORT COVERAGE & ASSUMPTIONS")
+        pdf.stat_row("Test Window", "M5: 31-May to 31-Aug 2026 (3 months)")
+        pdf.stat_row("M1 Window", "XAUUSD from 09-Jun; BTCUSD from 29-Jun (terminal M1 depth limit)")
+        pdf.stat_row("Symbols / Timeframes", "XAUUSD + BTCUSD | M1 + M5")
+        pdf.stat_row("Entry Model", "Pattern: Hammer/Star/Engulfing, body >= 10% (doji guard)")
+        pdf.stat_row("Filters", "EMA10/100 trend + ranging-market filter (60-bar chop)")
+        pdf.stat_row("Exits", "Open-RR: stop locks ~1R behind every +2R after +3R; max 200 bars")
+        pdf.stat_row("Candle Sizing", "No candle-entry limit; SL = swing low/high +/- buffer")
+        pdf.stat_row("Friction", "Spread XAU 0.3 / BTC 1.0 + stop slippage XAU 0.5 / BTC 5.0 (price units)")
+        pdf.stat_row("Risk Model", f"{RISK_PER_TRADE}% of STARTING balance per trade (no compounding)")
+        pdf.ln(4)
 
         # Account Summary
         pdf.section_title("ACCOUNT SUMMARY")
@@ -1018,5 +1313,5 @@ if __name__ == "__main__":
         pdf.output(pdf_path)
 
         # Send to Telegram
-        tg.send_document(pdf_path, caption="Kingade Scalper Bot - 3 Week Backtest Report (EMA10/EMA100 | RR 1:4)")
+        tg.send_document(pdf_path, caption="Kingade Scalper Bot - 3-Month Backtest Report (Pattern+EMA+Open-RR | XAUUSD/BTCUSD)")
         print(f"PDF sent to Telegram: {pdf_path}")
