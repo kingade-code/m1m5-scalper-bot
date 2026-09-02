@@ -1,57 +1,57 @@
 {
-  "version": "2.2.7",
-  "files": {
-    "main.py": {
-      "md5": "adab5d8abe136c084e1047b3c49d41a3"
-    },
-    "trade_manager.py": {
-      "md5": "8d0d1c5960de81f81d863dca9bc1f9f6"
-    },
-    "config.py": {
-      "md5": "180f452752922fff1cd54802e08ca8b8"
-    },
-    "signal_engine.py": {
-      "md5": "411ba6fd6603595b72bce9a2bfce1fdc"
-    },
-    "filters.py": {
-      "md5": "2be154b999b63e4c3c4ded796c4f23a8"
-    },
-    "pattern_detector.py": {
-      "md5": "c588313a48249ee6c1114ef329b00b91"
-    },
-    "swing_detector.py": {
-      "md5": "7dc0d0851653604e120ebb18ebeaa203"
-    },
-    "fibonacci.py": {
-      "md5": "0f114a52d959bd9b9e29844f398678db"
-    },
-    "mt5_connector.py": {
-      "md5": "fe139bf7cb39186193406819c4770863"
-    },
-    "license_manager.py": {
-      "md5": "121515618c2bf94d16648969dabfbfbf"
-    },
-    "telegram_notifier.py": {
-      "md5": "6d731aa4110e1a1371fa7370139e936a"
-    },
-    "daily_report.py": {
-      "md5": "727eae695b735f74e1f2635083be6ca0"
-    },
-    "login_setup.py": {
-      "md5": "010f47ed81118ef4629b0dce3d63f530"
-    },
-    "choch.py": {
-      "md5": "aafdc1044bd54e69e98a65f254cb70bf"
-    },
-    "updater.py": {
-      "md5": "93baa7b2f344e905b6ecc5e2ed763dcc"
-    },
-    "valid_keys.json": {
-      "md5": "24fdfe35803fd9152abf3cd062ae7450"
-    },
-    "license.json": {
-      "md5": "f8a4317a6c0d92b810f65ef30065342c"
-    }
-  },
-  "changelog": "v2.2.7 - Pattern detector rejects doji/indecision candles (MIN_BODY_RATIO 0.10); Hammer/Star/Engulf entries need a real body"
+    "version":  "2.2.9",
+    "files":  {
+                  "main.py":  {
+                                  "md5":  "1d68d948c2d4d4f254741ef50c4443d8"
+                              },
+                  "trade_manager.py":  {
+                                           "md5":  "92c6edfa472a570d6718512f5034ed92"
+                                       },
+                  "config.py":  {
+                                    "md5":  "fd0f528d357c8d012f0c24e31684626a"
+                                },
+                  "signal_engine.py":  {
+                                           "md5":  "9158c025452dd45a07b5457e03741949"
+                                       },
+                  "filters.py":  {
+                                     "md5":  "09c0030b77ebeb7d90160518878470d4"
+                                 },
+                  "pattern_detector.py":  {
+                                              "md5":  "d6c521affe0db425245735787449a1aa"
+                                          },
+                  "swing_detector.py":  {
+                                            "md5":  "7dc0d0851653604e120ebb18ebeaa203"
+                                        },
+                  "fibonacci.py":  {
+                                       "md5":  "0f114a52d959bd9b9e29844f398678db"
+                                   },
+                  "mt5_connector.py":  {
+                                           "md5":  "9f640c531e545b4dac9828b92fcaa1de"
+                                       },
+                  "license_manager.py":  {
+                                             "md5":  "121515618c2bf94d16648969dabfbfbf"
+                                         },
+                  "telegram_notifier.py":  {
+                                               "md5":  "6d731aa4110e1a1371fa7370139e936a"
+                                           },
+                  "daily_report.py":  {
+                                          "md5":  "727eae695b735f74e1f2635083be6ca0"
+                                      },
+                  "login_setup.py":  {
+                                         "md5":  "010f47ed81118ef4629b0dce3d63f530"
+                                     },
+                  "choch.py":  {
+                                   "md5":  "aafdc1044bd54e69e98a65f254cb70bf"
+                               },
+                  "updater.py":  {
+                                     "md5":  "93baa7b2f344e905b6ecc5e2ed763dcc"
+                                 },
+                  "zones.py":  {
+                                   "md5":  "8b12ad99920aa4e82067f152e197b32a"
+                               },
+                  "zone_detector.py":  {
+                                           "md5":  "3d56aa5f752f3299cec7932a3738e7af"
+                                       }
+              },
+    "changelog":  "v2.2.9 - fix stale-lock crash loop (reclaim nested pid file in _acquire_lock); add zip-swap updater package"
 }

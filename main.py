@@ -28,6 +28,7 @@ import license_manager
 
 # ─── Single Instance Lock ──────────────────────────────────────────
 import subprocess
+import shutil
 
 _LOCK_DIRNAME = "bot.lock.d"
 LOCK_PID_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), _LOCK_DIRNAME)
@@ -66,7 +67,17 @@ def _acquire_lock():
     except (ValueError, OSError):
         pass
     # The lock-holder's PID is dead (stale) — try to reclaim once.
+    # NOTE: the dir contains a pid file, so os.rmdir() alone would fail
+    # (OSError: not empty) and leave the stale lock forever, blocking every
+    # future start. Remove all contents first so a crashed instance's lock
+    # is always recoverable.
     try:
+        for entry in os.listdir(LOCK_PID_DIR):
+            ep = os.path.join(LOCK_PID_DIR, entry)
+            if os.path.isfile(ep):
+                os.remove(ep)
+            else:
+                shutil.rmtree(ep, ignore_errors=True)
         os.rmdir(LOCK_PID_DIR)
     except OSError:
         return False

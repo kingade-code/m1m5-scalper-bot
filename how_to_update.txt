@@ -1,0 +1,45 @@
+=========================================================
+ KingadeBot - How To Update (no full reinstall needed)
+=========================================================
+
+You can update your existing installation INSTEAD of deleting it
+and reinstalling. Your personal files are PRESERVED:
+   - config.py          (your settings)
+   - license.json       (your license)
+   - valid_keys.json    (your registered keys)
+
+WHAT YOU NEED
+-------------
+1. The latest update file:  KingadeBot_Download.zip
+   (get it from Kingade / the download link you were given)
+2. Place BOTH of these in your bot's folder:
+       KingadeBot_Download.zip
+       update_kingade.bat
+       update_kingade.py
+3. Python 3.10 or newer installed on the PC.
+
+HOW TO UPDATE
+-------------
+- Double-click  update_kingade.bat
+- When asked, just press Enter (it will find the zip in the same
+  folder), OR type the path / download URL to the zip, then Enter.
+- Watch the summary. "Changed / Added" = files that were updated.
+- If the bot was running, restart the bot afterwards.
+
+OPTIONAL: URL auto-update
+-------------------------
+update_kingade.bat "https://example.com/KingadeBot_Download.zip"
+  -> downloads that zip, then updates your files.
+
+ROLLBACK
+--------
+Previous copies of overwritten files are kept in the _backup/
+folder next to the bot. You can restore from there if needed.
+
+NOTES
+-----
+- Files that have not changed are left untouched (fast).
+- Config / license / valid keys are never overwritten, so your
+  settings survive every update.
+- This tool uses only built-in Python (stdlib) - no pip installs,
+  no GitHub token, no internet login required.
