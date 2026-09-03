@@ -1,5 +1,5 @@
 {
-    "version":  "2.2.9",
+    "version":  "2.3.0",
     "files":  {
                   "main.py":  {
                                   "md5":  "1d68d948c2d4d4f254741ef50c4443d8"
@@ -8,7 +8,7 @@
                                            "md5":  "92c6edfa472a570d6718512f5034ed92"
                                        },
                   "config.py":  {
-                                    "md5":  "fd0f528d357c8d012f0c24e31684626a"
+                                    "md5":  "62ea410ac7cf3725ed634fd1691b46e8"
                                 },
                   "signal_engine.py":  {
                                            "md5":  "9158c025452dd45a07b5457e03741949"
@@ -53,5 +53,5 @@
                                            "md5":  "3d56aa5f752f3299cec7932a3738e7af"
                                        }
               },
-    "changelog":  "v2.2.9 - fix stale-lock crash loop (reclaim nested pid file in _acquire_lock); add zip-swap updater package"
+    "changelog":  "v2.3.0 - BTCUSD trailing switched from ATR staircase to the fixed Open-RR ratchet (USE_OPEN_RR=True, USE_STAIRCASE_TRAIL=False): no TP, SL locks +2R and ratchets every 2R up the 3/5/7 grid"
 }

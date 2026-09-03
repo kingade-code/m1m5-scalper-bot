@@ -88,7 +88,7 @@ SYMBOL_OVERRIDES = {
         "TRAILING_START_ATR": 0.3,
         "TRAILING_STEP_ATR": 0.1,
         "TRAIL_ACTIVATE_R": 1.0,  # staircase trail engages at 1R (1:2) profit
-        "USE_OPEN_RR": False,
+        "USE_OPEN_RR": True,
         "SWING_LOOKBACK": 40,
         "ENTRY_MODE": "pattern",
         "SPREAD": 1.0,
@@ -295,12 +295,10 @@ RR_TRAIL_START_R = 3.0   # first milestone: start ratcheting at +3R
 RR_TRAIL_STEP_R = 2.0    # ratchet every 2R after the start point
 RR_TRAIL_LOCK_R = 1.0    # lock (milestone - 1)R behind price
 
-# ─── Staircase trailing (user request) ───────────────────────────
-# When USE_STAIRCASE_TRAIL is True, the Open-RR ratchet uses the staircase
-# ladder 2/3/5/7 then growing Fibonacci gaps to infinity, instead of the
-# fixed 3/5/7 grid above. The stop always locks ~STAIRCASE_LOCK_R behind
-# the current milestone and never sets a fixed take-profit (1:infinity).
-USE_STAIRCASE_TRAIL = True
+# ─── Staircase trailing (user rejected; Fibonacci 2/3/5/7 ladder backtests
+# worse). Left False so the rejected Fibonacci staircase can NEVER re-enable
+# silently if the Open-RR ratchet is turned back on.
+USE_STAIRCASE_TRAIL = False
 STAIRCASE_LOCK_R = 1.0   # lock (milestone - 1)R behind price
 
 # Activation R for the classic ATR staircase trail (_manage_trailing_stop).
