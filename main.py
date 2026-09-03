@@ -129,6 +129,91 @@ def _set_paused(paused=True):
         logger.info("Bot RESUMED")
         tg.send_message("▶️ <b>Bot RESUMED</b>")
 
+# ─── Daily Drawdown Limit ─────────────────────────────────────────
+# Tracks the running intraday peak equity and pauses new entries once the
+# day's drawdown (peak-to-trough equity, incl. floating P/L on open
+# positions) reaches DAILY_DRAWDOWN_PCT % of the day's starting balance.
+# Re-arms automatically at the UTC midnight boundary.
+_dd_day_key = None          # YYYY-MM-DD (UTC) the tracker is armed for
+_dd_start_balance = None    # account balance at arm time
+_dd_peak_equity = None      # highest equity seen this day
+_dd_triggered = None        # day key on which the limit fired
+
+
+def _dd_today_key():
+    return datetime.now(UTC).strftime("%Y-%m-%d")
+
+
+def _daily_drawdown_armed():
+    """(Re)arm the daily drawdown tracker once per UTC day."""
+    global _dd_day_key, _dd_start_balance, _dd_peak_equity, _dd_triggered
+    today = _dd_today_key()
+    if _dd_day_key != today:
+        _dd_day_key = today
+        acc = mt5c.get_account_info()
+        _dd_start_balance = acc.balance if acc is not None else None
+        _dd_peak_equity = acc.equity if acc is not None else None
+        _dd_triggered = None
+        logger.debug(
+            f"Daily drawdown tracker armed for {today}: "
+            f"start balance={_dd_start_balance:.2f}"
+        )
+    return True
+
+
+def _daily_drawdown_triggered():
+    """Return True if the day's equity drawdown has reached the limit and
+    new entries must be paused. Also triggers a once-per-day Telegram notice."""
+    global _dd_peak_equity, _dd_triggered
+    if not config.DAILY_DRAWDOWN_ENABLED or config.DAILY_DRAWDOWN_PCT <= 0:
+        return False
+    if not _daily_drawdown_armed():
+        return False
+    today = _dd_today_key()
+
+    acc = mt5c.get_account_info()
+    if acc is None or _dd_start_balance is None or _dd_start_balance <= 0:
+        return False
+    current_equity = acc.equity
+
+    # Once the limit has fired today, hold it until midnight UTC even if
+    # equity later recovers (a -10% dip is a hard stop for the rest of the day).
+    if _dd_triggered == today:
+        return True
+
+    # Track the running intraday equity peak.
+    if current_equity > (_dd_peak_equity or current_equity):
+        _dd_peak_equity = current_equity
+
+    # Drawdown from the day's equity peak, as a % of the day's starting balance.
+    if _dd_peak_equity is None:
+        return False
+    dd_pct = ((_dd_peak_equity - current_equity) / _dd_start_balance) * 100.0
+
+    if dd_pct < config.DAILY_DRAWDOWN_PCT:
+        return False
+
+    # Limit reached — pause new entries for the rest of the day (once only).
+    if _dd_triggered != today:
+        _dd_triggered = today
+        logger.warning(
+            f"DAILY DRAWDOWN LIMIT HIT | day {today} | "
+            f"{dd_pct:.1f}% (limit {config.DAILY_DRAWDOWN_PCT}%) | "
+            f"equity {current_equity:.2f} from peak {_dd_peak_equity:.2f} | "
+            f"new entries paused until midnight UTC"
+        )
+        try:
+            tg.send_message(
+                f"\u26d4 <b>DAILY DRAWDOWN LIMIT HIT</b>\n"
+                f"Equity down {dd_pct:.1f}% today (limit "
+                f"{config.DAILY_DRAWDOWN_PCT:.0f}%).\n"
+                f"New entries paused until midnight UTC."
+            )
+        except Exception as e:
+            logger.error(f"DD notify failed: {e}")
+    return True
+
+
 # ─── Market Hours ─────────────────────────────────────────────────
 _market_paused = False
 
@@ -340,6 +425,11 @@ def main():
 
             logger.debug(f"--- Scan #{scan_count} ---")
 
+            # Daily drawdown limit: compute the tracker state each scan. When
+            # triggered, new entries are blocked (existing positions still
+            # get managed/trailed below).
+            dd_paused = _daily_drawdown_triggered()
+
             # Get all available symbols
             if config.AUTO_DISCOVER_SYMBOLS:
                 symbols = mt5c.get_available_symbols()
@@ -414,7 +504,13 @@ def main():
                             f"{'='*50}"
                         )
 
-                        # Execute
+                        # Execute (blocked when the daily drawdown limit was hit)
+                        if dd_paused:
+                            logger.info(
+                                f"{symbol} {tf_name}: skipped entry "
+                                f"(daily drawdown limit reached)"
+                            )
+                            continue
                         order_result = trade_manager.execute_signal(signal_data)
 
                         if order_result:

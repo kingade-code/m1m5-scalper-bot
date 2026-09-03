@@ -354,3 +354,11 @@ TELEGRAM_GROUP_THREAD_ID = 3  # FREE SIGNALS topic
 
 # ─── Scan Interval ────────────────────────────────────────────────
 SCAN_INTERVAL_SECONDS = 5
+
+# ─── Daily Drawdown Limit ─────────────────────────────────────────
+# Once the day's intraday equity drawdown (peak-to-trough, including
+# floating losses on open positions) reaches this % of the day's starting
+# balance, the bot pauses ALL new entries until the next UTC day. Re-arms
+# automatically at the midnight UTC boundary. 0 = disabled.
+DAILY_DRAWDOWN_ENABLED = True
+DAILY_DRAWDOWN_PCT = 10.0
