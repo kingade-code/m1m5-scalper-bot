@@ -1,5 +1,5 @@
 {
-    "version":  "2.3.1",
+    "version":  "2.3.2",
     "files":  {
 "main.py":  {
                                    "md5":  "9879d4ac3870485d08cc1b529e6988ac"
@@ -7,9 +7,9 @@
                   "trade_manager.py":  {
                                            "md5":  "92c6edfa472a570d6718512f5034ed92"
                                        },
-                  "config.py":  {
-                                    "md5":  "90c991728b56dc95a7706b8a9b1a820f"
-                                },
+"config.py":  {
+                                     "md5":  "066fc5a65c212d0cd103fb285b23313d"
+                                 },
                   "signal_engine.py":  {
                                            "md5":  "9158c025452dd45a07b5457e03741949"
                                        },
@@ -53,5 +53,5 @@
                                            "md5":  "3d56aa5f752f3299cec7932a3738e7af"
                                        }
               },
-    "changelog":  "v2.3.1 - add daily drawdown limit: pause all new entries until midnight UTC when the day's intraday equity drawdown (incl. floating losses) reaches 10% of the day's starting balance (main.py guard + config flags)"
+    "changelog":  "v2.3.2 - enable the manual trade guard (MANUAL_TRADE_GUARD=True): close/cancel ANY position or pending order not placed by this bot (magic 777777) or a whitelisted bot. Whitelist currently running bots only: CHOCH (magic 888888). Manual MT5 terminal trades (magic 0) are closed on the next 5s scan."
 }

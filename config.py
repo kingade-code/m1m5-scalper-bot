@@ -34,8 +34,11 @@ SLIPPAGE = 3
 # Closes/cancels anything NOT placed by this bot or another controlled
 # EA. Manual MT5 terminal trades carry magic 0 here, so they get killed
 # on the next 5s scan. Other EAs using the same account can be exempted.
-MANUAL_TRADE_GUARD = False
-GUARD_EXEMPT_MAGICS = {730411, 234100}  # amt_order_flow_bot.py; liquidity-sweep bot (DC, magic 234100)
+MANUAL_TRADE_GUARD = True
+# Whitelist bots running on this PC so the guard doesn't touch them.
+# 888888 = CHOCH Strategy (main.py --mode live, running now). Only
+# currently-running bots are whitelisted; add others here as-needed.
+GUARD_EXEMPT_MAGICS = {888888}
 GUARD_DEBUG = False             # log-but-don't-close mode (testing only)
 
 # ─── Symbol Filter ────────────────────────────────────────────────
