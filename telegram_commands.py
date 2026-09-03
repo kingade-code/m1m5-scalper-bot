@@ -18,6 +18,7 @@ Command polling is non-blocking and throttle-gated so it never slows the
 is ignored.
 """
 
+import os
 import json
 import time
 import logging
@@ -35,6 +36,27 @@ _last_poll_time = 0.0
 _last_error_at = 0.0
 _error_repeat_secs = 300  # only log a poll failure once per 5 min
 
+# The bot runs as a supervisor (parent) + worker (child) pair. Only the
+# process that holds the single-instance lock must consume getUpdates,
+# otherwise two Telegram long-poll consumers conflict (HTTP 409) and
+# command handling breaks.
+_DEFAULT_LOCK_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "bot.lock.d")
+
+
+def _lock_holder_pid(lock_dir=None):
+    try:
+        d = lock_dir or getattr(config, "LOCK_PID_DIR", _DEFAULT_LOCK_DIR)
+        with open(os.path.join(d, "pid"), "r") as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _is_lock_holder():
+    """True only for the process that owns the single-instance lock."""
+    return os.getpid() == _lock_holder_pid()
+
 
 def _api_url():
     return f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}"
@@ -51,7 +73,7 @@ def _get_updates(offset, timeout=1):
     req = urllib.request.Request(url, data=payload,
                                  headers={"Content-Type": "application/json"})
     try:
-        resp = urllib.request.urlopen(req, timeout=timeout + 10)
+        resp = urllib.request.urlopen(req, timeout=timeout + 5)
         result = json.loads(resp.read())
         if result.get("ok"):
             return result.get("result", [])
@@ -128,16 +150,25 @@ def _reply(chat_id, text):
         "parse_mode": "HTML",
     }
     url = f"{_api_url()}/sendMessage"
-    try:
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=data,
-                                     headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=10)
-        result = json.loads(resp.read())
-        if not result.get("ok"):
+    data = json.dumps(payload).encode("utf-8")
+    # Retry a few times: outbound HTTPS to api.telegram.org is flaky here and
+    # a single-handshake failure otherwise drops the user's reply silently.
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, data=data,
+                                         headers={"Content-Type": "application/json"})
+            resp = urllib.request.urlopen(req, timeout=10)
+            result = json.loads(resp.read())
+            if result.get("ok"):
+                return True
             logger.warning(f"Command reply failed: {result}")
-    except Exception as e:
-        logger.error(f"Command reply error: {e}")
+            return False
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(1.0 * (attempt + 1))
+                continue
+            logger.error(f"Command reply error: {e}")
+    return False
 
 
 def _dispatch(chat_id, cmd, args):
@@ -183,9 +214,12 @@ def _set_paused_file(paused):
 def poll(force=False):
     """Poll Telegram once and dispatch any pending commands. Throttled so it
     runs at most once every COMMAND_POLL_SECONDS. Returns True when one or more
-    commands were handled (for logging)."""
+    commands were handled (for logging). Only the lock-holding process may poll
+    to avoid the getUpdates 409 conflict from the parent+child pair."""
     global _last_update_id, _last_poll_time
     if not config.TELEGRAM_ENABLED:
+        return False
+    if not _is_lock_holder():
         return False
     interval = getattr(config, "COMMAND_POLL_SECONDS", 10)
     now = time.time()
@@ -193,7 +227,17 @@ def poll(force=False):
         return False
     _last_poll_time = now
 
-    updates = _get_updates(_last_update_id + 1)
+    # getUpdates is interruptible/flaky on this network: retry a couple of
+    # times to ride out transient timeouts (a mostly-open long-poll is far
+    # worse than a short retry when a send/receive fails).
+    updates = None
+    for _ in range(3):
+        updates = _get_updates(_last_update_id + 1)
+        if updates is not None:
+            break
+        time.sleep(0.5)
+    if updates is None:
+        return False
     handled = False
     for upd in updates or []:
         uid = upd.get("update_id")
