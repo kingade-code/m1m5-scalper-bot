@@ -22,6 +22,7 @@ import mt5_connector as mt5c
 import signal_engine
 import trade_manager
 import telegram_notifier as tg
+import telegram_commands
 import daily_report
 import login_setup
 import license_manager
@@ -412,6 +413,13 @@ def main():
 
         while _running:
             scan_count += 1
+
+            # Poll Telegram command channel (e.g. /pause /resume /status).
+            # Throttled internally; must run even while paused so /resume works.
+            try:
+                telegram_commands.poll()
+            except Exception as e:
+                logger.error(f"Telegram command poll error: {e}")
 
             # Check market hours (auto-pause at close, auto-resume at open)
             if not _check_market_hours():

@@ -355,6 +355,11 @@ TELEGRAM_CHAT_IDS = [6412335897]  # Private chat
 TELEGRAM_GROUP_CHAT_ID = -1002127450559  # KINGADE FOREX group
 TELEGRAM_GROUP_THREAD_ID = 3  # FREE SIGNALS topic
 
+# ─── Telegram Command Channel ────────────────────────────────────
+# Long-polls getUpdates and honours /help /status /pause /resume /config
+# from TELEGRAM_CHAT_IDS. Does not affect notifications. 0 = disabled.
+COMMAND_POLL_SECONDS = 10   # how often to poll for commands (<= scan cycle)
+
 # ─── Scan Interval ────────────────────────────────────────────────
 SCAN_INTERVAL_SECONDS = 5
 
